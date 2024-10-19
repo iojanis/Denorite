@@ -1,0 +1,11 @@
+{
+  "id": "bank",
+  "type": "register_sockets",
+  "events": [
+    {
+      "name": "get_balance",
+      "script": "sockets/bank/balance.ts",
+      "permissions": ["player"]
+    }
+  ]
+}

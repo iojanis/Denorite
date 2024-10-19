@@ -1,0 +1,17 @@
+{
+  "lock": false,
+  "tasks": {
+    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx",
+    "cli": "echo \"import '\\$fresh/src/dev/cli.ts'\" | deno run --unstable -A -",
+    "manifest": "deno task cli manifest $(pwd)",
+    "start": "deno run -A --unstable-kv --watch=core/,api/ main.ts",
+    "build": "deno run -A --unstable-kv main.ts build",
+    "compile": "deno compile main.ts build",
+    "preview": "deno run -A main.ts",
+    "dev": "deno run -A --unstable-kv --watch=core/,api/ main.ts"
+  },
+  "imports": {
+    "$std/": "https://deno.land/std@0.216.0/"
+  },
+  "nodeModulesDir": "auto"
+}

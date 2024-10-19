@@ -1,0 +1,45 @@
+{
+  "id": "inventory_command",
+  "type": "register_command",
+  "data": {
+    "name": "inventory",
+    "subcommands": [
+      {
+        "name": "upload",
+        "description": "Upload an item to your virtual inventory",
+        "arguments": [
+          {
+            "name": "item",
+            "type": "item",
+            "description": "The item ID to upload"
+          },
+          {
+            "name": "amount",
+            "type": "integer",
+            "description": "The amount of the item to upload"
+          }
+        ]
+      },
+      {
+        "name": "download",
+        "description": "Download an item from your virtual inventory",
+        "arguments": [
+          {
+            "name": "item",
+            "type": "item",
+            "description": "The item ID to download"
+          },
+          {
+            "name": "amount",
+            "type": "integer",
+            "description": "The amount of the item to download"
+          }
+        ]
+      },
+      {
+        "name": "list",
+        "description": "List items in your virtual inventory"
+      }
+    ]
+  }
+}

@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
   SCRIPT_DIR: "./scripts",
   EVENT_DIR: "./events",
   MODULES_DIR: "./modules",
-  MINECRAFT_WS_PORT: 8080,
+  MINECRAFT_WS_PORT: 8082,
   PLAYER_WS_PORT: 8081,
   COMMAND_TIMEOUT: 5000,
   LOG_LEVEL: 'info',

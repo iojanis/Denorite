@@ -7,7 +7,7 @@ services:
       - "8081:8081"
     volumes:
       - .:/app
-      - kv-data:/app/.kv
+      - kv-data:/app/kv
       - enchantments:/app/enchantments
 
 volumes:

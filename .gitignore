@@ -11,4 +11,9 @@ _fresh/
 node_modules/
 
 .vscode/
+.idea/
+kv/*
+!kv/.gitkeep
 
+scripts/
+events/

@@ -1,4 +1,13 @@
-import type {Api, LogFunction, SendToMinecraft} from "./scripts/types.d.ts";
+import type {Api, LogFunction, SendToMinecraft} from "../types.d.ts";
+
+// Helper function to parse string values into appropriate types
+export function parseValue(value: string): unknown {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (value.match(/^-?\d+$/)) return parseInt(value, 10);
+  if (value.match(/^-?\d*\.\d+$/)) return parseFloat(value);
+  return value.replace(/^"|"$/g, ''); // Remove surrounding quotes if present
+}
 
 export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFunction): Api {
   async function executeCommand(command: string): Promise<string> {
@@ -43,6 +52,10 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
   }
 
   return {
+    executeCommand(command: string): Promise<string> {
+      return new Promise(resolve => 'sdsd')
+    },
+
     async xp(mode, target, amount, type = 'points') {
       let command = '';
       switch (mode) {
@@ -211,31 +224,57 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(`difficulty ${level}`);
     },
 
-    async getBlockData(x: number, y: number, z: number): Promise<Record<string, any>> {
+    async getBlockData(x: number, y: number, z: number): Promise<Record<string, unknown>> {
       const result = await executeCommand(`data get block ${x} ${y} ${z}`);
       const nbtRegex = /{.*}/s;
       const match = result.match(nbtRegex);
       if (match) {
         try {
           return JSON.parse(match[0].replace(/(\w+):/g, '"$1":'));
-        } catch (error) {
+        } catch (_error) {
           throw new Error('Failed to parse block data');
         }
       }
       throw new Error('No block data found');
     },
 
-    async getEntityData(target: string): Promise<Record<string, any>> {
-      const result = await executeCommand(`data get entity ${target}`);
+    async getEntityData(target: string, path?: string): Promise<Record<string, unknown>> {
+      const command = path
+        ? `data get entity ${target} ${path}`
+        : `data get entity ${target}`;
+
+      const result = await executeCommand(command);
+
+      if (path) {
+        // If a path is provided, the result might be a simple value or a nested object
+        const simpleValueRegex = /: (.+)$/;
+        const match = result.match(simpleValueRegex);
+        if (match) {
+          const value = match[1].trim();
+          try {
+            // Attempt to parse as JSON if it looks like an object or array
+            if (value.startsWith('{') || value.startsWith('[')) {
+              return JSON.parse(value.replace(/(\w+):/g, '"$1":'));
+            }
+            // Otherwise, return as a simple key-value pair
+            return { [path.split('.').pop()!]: this.parseValue(value) };
+          } catch (_error) {
+            throw new Error('Failed to parse entity data');
+          }
+        }
+      }
+
+      // If no path is provided or the path result is complex, use the original NBT parsing
       const nbtRegex = /{.*}/s;
       const match = result.match(nbtRegex);
       if (match) {
         try {
           return JSON.parse(match[0].replace(/(\w+):/g, '"$1":'));
-        } catch (error) {
+        } catch (_error) {
           throw new Error('Failed to parse entity data');
         }
       }
+
       throw new Error('No entity data found');
     },
 
@@ -252,7 +291,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(command);
     },
 
-    async getScoreboardPlayers(objective: string): Promise<Record<string, number>> {
+    async getScoreboardPlayers(): Promise<Record<string, number>> {
       const result = await executeCommand(`scoreboard players list`);
       const players: Record<string, number> = {};
       const regex = /(\w+): (\d+)/g;
@@ -326,9 +365,9 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? `${match[2]} ${match[1]}: ${match[3]}` : result;
     },
 
-    async getBossbar(id: string): Promise<Record<string, any>> {
+    async getBossbar(id: string): Promise<Record<string, string | number | boolean>> {
       const result = await executeCommand(`bossbar get ${id}`);
-      const data: Record<string, any> = {};
+      const data: Record<string, string | number | boolean> = {};
       const regex = /(\w+): ([\w\s]+)/g;
       let match;
       while ((match = regex.exec(result)) !== null) {
@@ -389,7 +428,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async attribute(target: string, attribute: string, action: 'get' | 'base' | 'modifier', ...args: any[]): Promise<string> {
+    async attribute(target: string, attribute: string, action: 'get' | 'base' | 'modifier', ...args: string[]): Promise<string> {
       const result = await executeCommand(`attribute ${target} ${attribute} ${action} ${args.join(' ')}`);
       const regex = /(\d+(?:\.\d+)?)/;
       const match = result.match(regex);
@@ -504,7 +543,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async loot(target: 'spawn' | 'give' | 'insert' | 'replace', destination: string, source: string, ...args: any[]): Promise<string> {
+    async loot(target: 'spawn' | 'give' | 'insert' | 'replace', destination: string, source: string, ...args: string[]): Promise<string> {
       const result = await executeCommand(`loot ${target} ${destination} ${source} ${args.join(' ')}`);
       const regex = /Dropped (\d+) stack\(s\)/;
       const match = result.match(regex);
@@ -540,11 +579,11 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async particle(name: string, pos: [number, number, number], ...args: any[]): Promise<string> {
+    async particle(name: string, pos: [number, number, number], ...args: string[]): Promise<string> {
       return await executeCommand(`particle ${name} ${pos.join(' ')} ${args.join(' ')}`);
     },
 
-    async playSound(sound: string, source: string, target: string, ...args: any[]): Promise<string> {
+    async playSound(sound: string, source: string, target: string, ...args: string[]): Promise<string> {
       return await executeCommand(`playsound ${sound} ${source} ${target} ${args.join(' ')}`);
     },
 
@@ -601,7 +640,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return executeCommand(command);
     },
 
-    async team(action: 'add' | 'remove' | 'empty' | 'join' | 'leave' | 'modify', team: string, ...args: any[]): Promise<string> {
+    async team(action: 'add' | 'remove' | 'empty' | 'join' | 'leave' | 'modify', team: string, ...args: string[]): Promise<string> {
       return await executeCommand(`team ${action} ${team} ${args.join(' ')}`);
     },
 
@@ -613,7 +652,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(`tellraw ${target} ${message}`);
     },
 
-    async title(target: string, action: 'title' | 'subtitle' | 'actionbar' | 'clear' | 'reset', ...args: any[]): Promise<string> {
+    async title(target: string, action: 'title' | 'subtitle' | 'actionbar' | 'clear' | 'reset', ...args: string[]): Promise<string> {
       return await executeCommand(`title ${target} ${action} ${args.join(' ')}`);
     },
 
@@ -847,13 +886,13 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? `${match[2]}: -${match[1]}` : result;
     },
 
-    async getPlayerData(player: string): Promise<Record<string, any>> {
+    async getPlayerData(player: string): Promise<Record<string, string>> {
       const result = await executeCommand(`data get entity ${player}`);
       try {
         const dataString = result.slice(result.indexOf('{'));
         return JSON.parse(dataString.replace(/(\w+):/g, '"$1":'));
-      } catch (error) {
-        throw new Error('Failed to parse player data');
+      } catch (error: unknown) {
+        throw new Error('Failed to parse player data: ' + error);
       }
     },
 
@@ -894,7 +933,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async getPlayerInventory(player: string): Promise<Array<{ slot: number, id: string, count: number }>> {
       const data = await this.getPlayerData(player);
-      return data.Inventory.map((item: any) => ({
+      return data.Inventory.map((item: { Slot: number; id: string; Count: number }) => ({
         slot: item.Slot,
         id: item.id,
         count: item.Count
@@ -914,7 +953,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async getPlayerAttributes(player: string): Promise<Array<{ name: string, base: number }>> {
       const data = await this.getPlayerData(player);
-      return data.Attributes.map((attr: any) => ({
+      return data.Attributes.map((attr: { Name: string; Base: number }) => ({
         name: attr.Name,
         base: attr.Base
       }));

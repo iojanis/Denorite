@@ -1,6 +1,4 @@
 // main.ts
-
-import { create, verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { encode as base64Encode, decode as base64Decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 import "jsr:@std/dotenv/load";
 
@@ -13,9 +11,6 @@ import { WebSocketManager } from "./core/webSocketManager.ts";
 
 // Default configuration
 const DEFAULT_CONFIG = {
-  SCRIPT_DIR: "./scripts",
-  EVENT_DIR: "./events",
-  MODULES_DIR: "./modules",
   MINECRAFT_WS_PORT: 8082,
   PLAYER_WS_PORT: 8081,
   COMMAND_TIMEOUT: 5000,
@@ -56,8 +51,6 @@ async function loadOrGenerateJwtSecret(envVarName: string): Promise<CryptoKey> {
 }
 
 async function main() {
-  const kv = await Deno.openKv();
-
   const logger = new Logger();
 
   const kvManager = new KvManager(logger);
@@ -72,8 +65,9 @@ async function main() {
 
   const authService = new AuthService(configManager, kvManager, logger, jwtSecret, denoriteSecret);
 
-  const scriptManager = new ScriptManager(kv, configManager, authService, logger);
-  // await scriptManager.init();
+  const scriptManager = new ScriptManager(configManager, kvManager, logger, authService);
+  await scriptManager.init();
+  await scriptManager.loadModules(); // Added this line to load modules
 
   const wsManager = new WebSocketManager(configManager, scriptManager, logger, authService);
   await wsManager.init();
@@ -83,13 +77,10 @@ async function main() {
 
   // Generate and log a Denorite server token
   const serverToken = await authService.createDenoriteToken(360 * 24 * 60 * 60); // 360 days
-  logger.info('Denorite Server Token: ' + serverToken);
+  // logger.info('Mino Server Token: ' + serverToken);
 
   wsManager.startMinecraftServer(minecraftWsPort);
   wsManager.startPlayerServer(playerWsPort);
-
-  logger.info(`Minecraft WebSocket server running on ws://localhost:${minecraftWsPort}`);
-  logger.info(`Player WebSocket server running on ws://localhost:${playerWsPort}`);
 
   // Keep the process running
   await new Promise(() => {});

@@ -1,6 +1,8 @@
+// deno-lint-ignore-file
 // types.d.ts
 
-import {ConfigManager} from "./config.ts";
+import { ConfigManager } from "./core/configManager.ts";
+import { AuthService } from "./core/authService.ts";
 
 interface RateLimitRule {
   tokensPerInterval: number;
@@ -45,25 +47,8 @@ interface AuthContext {
   getPlayerNameFromId: (playerId: string) => Promise<string | null>;
 }
 
-// Define the main ScriptContext interface
-interface ScriptContext {
-  params: any;
-  kv: Deno.Kv;
-  executeModuleScript: (moduleName: string, scriptPath: string, params: any) => Promise<any>;
-  sendToMinecraft: (data: any) => Promise<any>;
-  sendToPlayer: (playerId: string, data: any) => void;
-  log: (message: string) => void;
-  auth: AuthContext;
-  config: ConfigManager;
-  api: Api | undefined;
-}
-
-interface WatcherScriptContext extends ScriptContext {
-  changedKey: Deno.KvKey;
-  newValue: unknown;
-}
-
 interface Api {
+  executeCommand(command: string): Promise<string>;
   xp(mode: 'get' | 'set' | 'add' | 'remove', target: string, amount?: number, type?: 'points' | 'levels'): Promise<string>;
   teleport(target: string, x: number, y: number, z: number): Promise<string>;
   give(target: string, item: string, amount?: number): Promise<string>;
@@ -81,7 +66,7 @@ interface Api {
   spawnPoint(target: string, x: number, y: number, z: number): Promise<string>;
   difficulty(level: 'peaceful' | 'easy' | 'normal' | 'hard'): Promise<string>;
   getBlockData(x: number, y: number, z: number): Promise<Record<string, any>>;
-  getEntityData(target: string): Promise<Record<string, any>>;
+  getEntityData(target: string, path?: string): Promise<Record<string, any>>;
   fill(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, block: string, mode?: 'replace' | 'destroy' | 'hollow' | 'keep' | 'outline'): Promise<string>;
   clone(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, x: number, y: number, z: number, maskMode?: 'replace' | 'masked', cloneMode?: 'force' | 'move' | 'normal'): Promise<string>;
   getScoreboardPlayers(objective: string): Promise<Record<string, number>>;
@@ -182,4 +167,58 @@ interface Api {
   getPlayerLastDeathLocation(player: string): Promise<{ x: number, y: number, z: number, dimension: string } | null>;
 }
 
-export type { EventData, ScriptParams, MinecraftCommand, SendToMinecraft, LogFunction, Api, ScriptContext, AuthContext };
+export interface ScriptContext {
+  params: any;
+  kv: Deno.Kv;
+  sendToMinecraft: (data: any) => Promise<any>;
+  sendToPlayer: (playerId: string, data: any) => void;
+  log: (message: string) => void;
+  api: any; // Replace with a more specific type if available
+  auth: AuthService;
+  config: ConfigManager;
+  executeModuleScript: (moduleName: string, methodName: string, params: any) => Promise<any>;
+}
+
+export interface WatcherScriptContext {
+  changedKey: Deno.KvKey;
+  newValue: unknown;
+  kv: Deno.Kv;
+  log: (message: string) => void;
+  api: any; // Replace with a more specific type if available
+  auth: AuthService;
+  config: ConfigManager;
+  executeModuleScript: (moduleName: string, methodName: string, params: any) => Promise<any>;
+}
+
+export interface EnchantmentContext {
+  // Add properties as needed
+}
+
+export interface EventContext {
+  params: {
+    playerId: string;
+    playerName: string;
+    [key: string]: any;
+  };
+  kv: Deno.Kv;
+  log: (message: string) => void;
+}
+
+export interface CommandContext {
+  sender: string;
+  executeCommand: (command: string) => Promise<void>;
+}
+
+export interface SocketContext {
+  params: {
+    playerId: string;
+    [key: string]: any;
+  };
+  kv: Deno.Kv;
+  log: (message: string) => void;
+  sendToPlayer: (event: string, data: any) => void;
+}
+
+
+export type { EventData, ScriptParams, MinecraftCommand, SendToMinecraft, LogFunction, Api, AuthContext };
+

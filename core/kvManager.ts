@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 // core/kvManager.ts
 
 import { Logger } from "./logger.ts";
@@ -5,7 +6,7 @@ import { Logger } from "./logger.ts";
 type KvKey = string | number | Uint8Array | KvKey[];
 
 export class KvManager {
-  private kv: Deno.Kv | null = null;
+  public kv: Deno.Kv | null = null;
   private logger: Logger;
   private watchers: Map<string, Set<(value: unknown) => void>> = new Map();
 
@@ -15,9 +16,9 @@ export class KvManager {
 
   async init() {
     try {
-      this.kv = await Deno.openKv();
-      this.logger.info("KV store initialized successfully");
-    } catch (error) {
+      this.kv = await Deno.openKv("./kv/denorite.db");
+      this.logger.debug("KV store initialized successfully");
+    } catch (error: any) {
       this.logger.error(`Failed to initialize KV store: ${error.message}`);
       throw error;
     }
@@ -29,35 +30,35 @@ export class KvManager {
     }
   }
 
-  async get(key: KvKey): Promise<unknown> {
+  async get(key: Deno.KvKey): Promise<unknown> {
     this.assertKvInitialized();
-    const result = await this.kv!.get(key);
+    const result = await this.kv!.get(key as Deno.KvKey);
     return result.value;
   }
 
-  async set(key: KvKey, value: unknown): Promise<void> {
+  async set(key: Deno.KvKey, value: unknown): Promise<void> {
     this.assertKvInitialized();
     await this.kv!.set(key, value);
-    this.notifyWatchers(key, value);
+    this.notifyWatchers(key as KvKey, value);
   }
 
-  async delete(key: KvKey): Promise<void> {
+  async delete(key: Deno.KvKey): Promise<void> {
     this.assertKvInitialized();
     await this.kv!.delete(key);
-    this.notifyWatchers(key, undefined);
+    this.notifyWatchers(key as KvKey, undefined);
   }
 
-  list(prefix: KvKey, options?: Deno.KvListOptions): Deno.KvListIterator<unknown> {
+  list(prefix: Deno.KvKey, options?: Deno.KvListOptions): Deno.KvListIterator<unknown> {
     this.assertKvInitialized();
     return this.kv!.list({ prefix }, options);
   }
 
-  watch(key: KvKey, callback: (value: unknown) => void): void {
+  watch(key: Deno.KvKey, callback: (changedKey: Deno.KvKey, newValue: unknown) => Promise<void>): void {
     const keyString = JSON.stringify(key);
     if (!this.watchers.has(keyString)) {
       this.watchers.set(keyString, new Set());
     }
-    this.watchers.get(keyString)!.add(callback);
+    this.watchers.get(keyString)!.add(callback as any);
   }
 
   unwatch(key: KvKey, callback: (value: unknown) => void): void {
@@ -76,7 +77,7 @@ export class KvManager {
   }
 
   async getWithLock<T>(
-    key: KvKey,
+    key: Deno.KvKey,
     callback: (value: T | null) => Promise<T>
   ): Promise<T> {
     this.assertKvInitialized();

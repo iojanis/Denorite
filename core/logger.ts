@@ -1,7 +1,5 @@
 // core/logger.ts
 
-import { ConfigManager } from "./configManager.ts";
-
 export enum LogLevel {
   DEBUG = 0,
   INFO = 1,
@@ -13,7 +11,7 @@ export class Logger {
   private logLevel: LogLevel;
 
   constructor() {
-    this.logLevel = LogLevel.INFO; // Default log level
+    this.logLevel = LogLevel.DEBUG; // Default log level
   }
 
   private log(level: LogLevel, message: string, ...args: unknown[]) {
@@ -40,10 +38,10 @@ export class Logger {
     this.log(LogLevel.ERROR, message, ...args);
   }
 
-  async getLogEntries(limit: number = 100, level: LogLevel = LogLevel.DEBUG): Promise<string[]> {
+  getLogEntries(_limit: number = 100, _level: LogLevel = LogLevel.DEBUG): Promise<string[]> {
     // This is a placeholder implementation. In a real-world scenario,
     // you might want to store logs in a file or database and retrieve them from there.
     console.warn("getLogEntries is not implemented. It's a placeholder method.");
-    return ["Log entry 1", "Log entry 2", "Log entry 3"];
+    return Promise.resolve(["Log entry 1", "Log entry 2", "Log entry 3"]);
   }
 }

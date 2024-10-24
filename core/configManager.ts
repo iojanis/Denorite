@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 import { KvManager } from "./kvManager.ts";
 import { Logger } from "./logger.ts";
 
@@ -28,7 +29,7 @@ export class ConfigManager {
       }
     }
 
-    this.logger.info("Configuration initialized");
+    this.logger.debug("Configuration initialized");
   }
 
   async get(key: string): Promise<any> {

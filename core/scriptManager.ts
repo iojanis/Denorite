@@ -1,65 +1,56 @@
-// core/scriptManager.ts
+// deno-lint-ignore-file
+import {walk} from "https://deno.land/std@0.177.0/fs/mod.ts";
+import type {ScriptContext} from "../types.ts";
+import {ConfigManager} from "./configManager.ts";
+import {KvManager} from "./kvManager.ts";
+import {Logger} from "./logger.ts";
+import {AuthService} from "./authService.ts";
+import {createMinecraftAPI} from "../api/minecraftAPI.ts";
+import {getMetadata, listMetadata} from "../decorators.ts";
+import {dirname, fromFileUrl, resolve} from "https://deno.land/std@0.177.0/path/mod.ts";
 
-import { walk } from "https://deno.land/std@0.177.0/fs/mod.ts";
-import { join } from "https://deno.land/std@0.177.0/path/mod.ts";
-import type { ScriptContext, WatcherScriptContext } from "./types.ts";
-import { ConfigManager } from "./configManager.ts";
-import { KvManager } from "./kvManager.ts";
-import { Logger } from "./logger.ts";
-import { AuthService } from "./authService.ts";
-import { createMinecraftAPI } from "../api/minecraftAPI.ts";
-
-interface ModuleConfig {
+interface ModuleMetadata {
   name: string;
   version: string;
-  commands: CommandConfig[];
-  events: EventConfig[];
-  sockets: SocketConfig[];
-  watchers: WatcherConfig[];
-  lib: string[];
+  servers: string | string[];
 }
 
-interface CommandConfig {
-  name: string;
-  script: string;
-  permissions: string[];
-  args: CommandArgConfig[];
+type ModuleInstance = {
+  [key: string]: (...args: unknown[]) => Promise<unknown>;
+};
+
+interface DecoratedMethod {
+  moduleName: string;
+  methodName: string;
 }
 
-interface CommandArgConfig {
+interface CommandMetadata {
   name: string;
-  type: string;
   description: string;
-}
-
-interface EventConfig {
-  name: string;
-  script: string;
-}
-
-interface SocketConfig {
-  name: string;
-  script: string;
+  usage: string;
   permissions: string[];
+  subcommands?: any[];
 }
-
-interface WatcherConfig {
-  name: string;
-  script: string;
-  keys: Deno.KvKey[];
-}
+// Add this import at the top of your file
+const isCompiled = Deno.args.includes("--compiled");
 
 export class ScriptManager {
-  private modules: Map<string, ModuleConfig> = new Map();
-  private scriptCache: Map<string, any> = new Map();
+  private modules: Map<string, { instance: ModuleInstance; metadata: ModuleMetadata }> = new Map();
   private config: ConfigManager;
-  private kv: KvManager;
+  public kv: KvManager;
   private logger: Logger;
   private auth: AuthService;
   private minecraftSockets: Set<WebSocket> = new Set();
   private playerSockets: Map<string, WebSocket> = new Map();
-  private pendingResponses: Map<string, (value: any) => void> = new Map();
+  private pendingResponses: Map<string, (value: unknown) => void> = new Map();
+
+  private events: Map<string, DecoratedMethod[]> = new Map();
+  private commands: Map<string, DecoratedMethod> = new Map();
+  private sockets: Map<string, DecoratedMethod> = new Map();
   private registeredCommands: Map<string, any> = new Map();
+  private commandsToRegister: Map<string, CommandMetadata> = new Map();
+
+  private basePath: string;
 
   constructor(
     config: ConfigManager,
@@ -71,162 +62,329 @@ export class ScriptManager {
     this.kv = kv;
     this.logger = logger;
     this.auth = auth;
+    this.basePath = dirname(fromFileUrl(import.meta.url));
   }
 
-  async loadModules() {
-    const modulesDir = './modules';
-    for await (const entry of walk(modulesDir, { maxDepth: 1, includeDirs: false })) {
-      if (entry.name === "module.json") {
-        const moduleDir = entry.path.replace("/module.json", "");
-        const moduleName = moduleDir.split("/").pop() as string;
-        await this.loadModule(moduleName, moduleDir);
+  async init(): Promise<void> {
+    this.logger.debug('ScriptManager initialized');
+
+    if (isCompiled) this.logger.debug('IS COMPILED')
+  }
+
+  private async importModule(modulePath: string): Promise<any> {
+    this.logger.debug(`Importing module from: ${modulePath}`);
+
+    try {
+      // Resolve the full path relative to the base path
+      const fullPath = resolve(this.basePath, modulePath);
+      const moduleUrl = `file://${fullPath}`;
+
+      // Use dynamic import with the file URL
+      return await import(moduleUrl);
+    } catch (error: any) {
+      this.logger.error(`Error importing module ${modulePath}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async loadModules(): Promise<void> {
+    const enchantmentsDir = './enchantments';
+    this.logger.info('Loading modules from ' + enchantmentsDir);
+    for await (const entry of walk(enchantmentsDir, { maxDepth: 1, includeDirs: false })) {
+      if (entry.name.endsWith('.ts')) {
+        await this.loadModule(entry.path);
       }
     }
   }
 
-  private async loadModule(moduleName: string, moduleDir: string) {
-    const configPath = join(moduleDir, "module.json");
-    const configContent = await Deno.readTextFile(configPath);
-    const moduleConfig: ModuleConfig = JSON.parse(configContent);
+  private async loadModule(modulePath: string): Promise<void> {
+    this.logger.debug(`Attempting to load module from path: ${modulePath}`);
+    try {
+      this.logger.debug(`Importing module from: file://${Deno.cwd()}/${modulePath}`);
+      const module = !isCompiled ? await import(`file://${Deno.cwd()}/${modulePath}`) : await this.importModule(modulePath);
 
-    this.modules.set(moduleName, moduleConfig);
-    this.logger.info(`Loaded module: ${moduleName}`);
+      this.logger.debug(`Module imported successfully. Examining exported items...`);
 
-    // Load and cache lib scripts
-    for (const libScript of moduleConfig.lib) {
-      const scriptPath = join(moduleDir, libScript);
-      await this.loadScript(moduleName, scriptPath);
-    }
+      for (const [exportName, exportedItem] of Object.entries(module)) {
+        this.logger.debug(`Examining exported item: ${exportName}`);
 
-    // Set up KV watchers
-    for (const watcher of moduleConfig.watchers) {
-      const watcherPath = join(moduleDir, watcher.script);
-      await this.setupKvWatcher(moduleName, watcherPath, watcher.keys);
-    }
+        if (typeof exportedItem === 'function' && exportedItem.prototype && exportedItem.prototype.constructor.name !== 'Object') {
+          this.logger.debug(`${exportName} appears to be a class. Checking for module metadata...`);
 
-    // Register commands
-    for (const command of moduleConfig.commands) {
-      await this.registerCommand(command);
+          const moduleMetadata = getMetadata(exportedItem, 'module') as ModuleMetadata;
+          this.logger.debug(`Module metadata for ${exportName}:`, moduleMetadata);
+
+          if (moduleMetadata && moduleMetadata.name && moduleMetadata.version) {
+            this.logger.debug(`Found valid module metadata for ${exportName}. Instantiating...`);
+            const instance = new (exportedItem as new () => ModuleInstance)();
+            this.modules.set(moduleMetadata.name, { instance, metadata: moduleMetadata });
+            this.logger.info(`Loaded module: ${moduleMetadata.name} v${moduleMetadata.version}`);
+
+            const allMetadata = listMetadata(exportedItem);
+            this.logger.debug(`All metadata for ${exportName}:`, allMetadata);
+
+            // Command structure to build
+            const commandStructure: { [key: string]: any } = {};
+
+            for (const [key, value] of Object.entries(allMetadata)) {
+              if (key.startsWith('event:')) {
+                const eventName = (value as { name: string }).name;
+                this.logger.debug(`Found Event handler: ${eventName}`);
+                this.addDecoratedMethod(this.events, eventName, moduleMetadata.name, key.split(':')[1]);
+              } else if (key.startsWith('command:')) {
+                const methodName = key.split(':')[1];
+                const commandConfig = value as { path: string[] };
+                const commandPath = commandConfig.path;
+
+                let currentLevel = commandStructure;
+                for (let i = 0; i < commandPath.length; i++) {
+                  const pathPart = commandPath[i];
+                  if (i === commandPath.length - 1) {
+                    // This is the final part of the path, so it's our actual command/subcommand
+                    const argumentMetadata = allMetadata[`arguments:${methodName}`] || [];
+                    const descriptionMetadata = allMetadata[`description:${methodName}`];
+                    const permissionMetadata = allMetadata[`permission:${methodName}`];
+
+                    currentLevel[pathPart] = {
+                      name: pathPart,
+                      description: descriptionMetadata || 'No description provided',
+                      arguments: argumentMetadata,
+                      permission: permissionMetadata || 'player'
+                    };
+
+                    // Store the command with its full path
+                    const fullCommandPath = commandPath.join(' ');
+                    this.commands.set(fullCommandPath, { moduleName: moduleMetadata.name, methodName });
+                    this.logger.debug(`Registered command: ${fullCommandPath} -> ${moduleMetadata.name}.${methodName}`);
+                  } else {
+                    // This is a parent command, ensure it exists
+                    currentLevel[pathPart] = currentLevel[pathPart] || { subcommands: {} };
+                    currentLevel = currentLevel[pathPart].subcommands;
+                  }
+                }
+              } else if (key.startsWith('socket:')) {
+                const socketEventName = (value as { name: string }).name;
+                this.logger.debug(`Found Socket handler: ${socketEventName}`);
+                this.sockets.set(socketEventName, { moduleName: moduleMetadata.name, methodName: key.split(':')[1] });
+              }
+            }
+
+            // After processing all commands, register them
+            for (const [commandName, commandData] of Object.entries(commandStructure)) {
+              const registrationData = this.buildCommandRegistrationData(commandName, commandData);
+              this.logger.debug(`Registering command: ${JSON.stringify(registrationData, null, 2)}`);
+
+              // Store the command in the commandsToRegister Map
+              this.commandsToRegister.set(commandName, registrationData);
+            }
+          } else {
+            this.logger.debug(`No valid module metadata found for ${exportName}. Skipping...`);
+          }
+        } else {
+          this.logger.debug(`${exportName} is not a class. Skipping...`);
+        }
+      }
+
+      this.logger.debug(`Finished processing all exported items from ${modulePath}`);
+    } catch (error) {
+      this.logger.error(`Error loading module ${modulePath}: ${(error as Error).message}`);
+      this.logger.debug(`Stack trace:`, (error as Error).stack);
     }
   }
 
-  private async loadScript(moduleName: string, scriptPath: string) {
-    const module = await import(`file://${scriptPath}`);
-    this.scriptCache.set(`${moduleName}:${scriptPath}`, module.default);
-  }
-
-  private async setupKvWatcher(moduleName: string, scriptPath: string, keys: Deno.KvKey[]) {
-    const watcherFunc = await this.loadScript(moduleName, scriptPath);
-    for (const key of keys) {
-      this.kv.watch(key, async (changedKey: Deno.KvKey, newValue: unknown) => {
-        const context: WatcherScriptContext = {
-          changedKey,
-          newValue,
-          kv: this.kv,
-          log: this.logger.info.bind(this.logger),
-          api: createMinecraftAPI(this.sendToMinecraft.bind(this), this.logger.info.bind(this.logger)),
-          auth: this.auth,
-          config: this.config,
-          executeModuleScript: this.executeModuleScript.bind(this),
-        };
-        await watcherFunc(context);
-      });
-    }
-  }
-
-  async executeModuleScript(moduleName: string, scriptPath: string, params: any): Promise<any> {
-    const cacheKey = `${moduleName}:${scriptPath}`;
-    let scriptFunc = this.scriptCache.get(cacheKey);
-
-    if (!scriptFunc) {
-      const module = await import(`file://${scriptPath}`);
-      scriptFunc = module.default;
-      this.scriptCache.set(cacheKey, scriptFunc);
-    }
-
-    const context: ScriptContext = {
-      params,
-      kv: this.kv,
-      sendToMinecraft: this.sendToMinecraft.bind(this),
-      sendToPlayer: this.sendToPlayer.bind(this),
-      log: this.logger.info.bind(this.logger),
-      api: createMinecraftAPI(this.sendToMinecraft.bind(this), this.logger.info.bind(this.logger)),
-      auth: this.auth,
-      config: this.config,
-      executeModuleScript: this.executeModuleScript.bind(this),
+  private buildCommandRegistrationData(commandName: string, commandData: any): any {
+    const result: any = {
+      name: commandName,
+      description: commandData.description || "No description provided",
+      permission: commandData.permission || "player",
     };
 
-    return await scriptFunc(context);
+    if (commandData.arguments && commandData.arguments.length > 0) {
+      result.arguments = commandData.arguments.map((arg: any) => ({
+        name: arg.name,
+        type: arg.type,
+        description: arg.description
+      }));
+    }
+
+    if (commandData.subcommands && Object.keys(commandData.subcommands).length > 0) {
+      result.subcommands = Object.entries(commandData.subcommands).map(([subName, subData]: [string, any]) =>
+        this.buildCommandRegistrationData(subName, subData)
+      );
+    }
+
+    return result;
   }
 
-  async handleCommand(command: string, subcommand: string, args: any, sender: string, senderType: string) {
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      const commandConfig = moduleConfig.commands.find(c => c.name === command);
-      if (commandConfig) {
-        const scriptPath = join(await this.config.get("MODULES_DIR") as string, moduleName, commandConfig.script);
-        await this.executeModuleScript(moduleName, scriptPath, { command, subcommand, args, sender, senderType });
-        return;
+  private addDecoratedMethod(map: Map<string, DecoratedMethod[]>, key: string, moduleName: string, methodName: string): void {
+    const methods = map.get(key) || [];
+    methods.push({ moduleName, methodName });
+    map.set(key, methods);
+  }
+
+  async handleCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<void> {
+    this.logger.debug(`Received command execution: command=${command}, subcommand=${subcommand}, args=${JSON.stringify(args)}`);
+
+    let fullCommandPath = command;
+    if (subcommand) {
+      fullCommandPath += ` ${subcommand}`;
+    }
+
+    this.logger.debug(`Attempting to handle command: ${fullCommandPath}`);
+    this.logger.debug("Current registered commands:");
+    for (const [commandPath, commandInfo] of this.commands.entries()) {
+      this.logger.debug(`  ${commandPath} -> ${commandInfo.moduleName}.${commandInfo.methodName}`);
+    }
+
+    const decoratedMethod = this.commands.get(fullCommandPath);
+    if (decoratedMethod) {
+      const { moduleName, methodName } = decoratedMethod;
+      this.logger.debug(`Found command handler: ${moduleName}.${methodName}`);
+      const moduleData = this.modules.get(moduleName);
+      if (moduleData) {
+        const { instance: moduleInstance } = moduleData;
+        const commandMethod = moduleInstance[methodName] as (...args: unknown[]) => Promise<unknown>;
+        if (commandMethod) {
+          const context: ScriptContext = this.createContext({ command, subcommand, args, sender, senderType });
+          this.logger.debug(`Executing command method: ${moduleName}.${methodName}`);
+          try {
+            await commandMethod.call(moduleInstance, context);
+          } catch (error) {
+            this.logger.error(`Error executing command ${fullCommandPath}: ${error}`);
+          }
+          return;
+        } else {
+          this.logger.warn(`Command method not found in module instance: ${moduleName}.${methodName}`);
+        }
+      } else {
+        this.logger.warn(`Module not found: ${moduleName}`);
+      }
+    } else {
+      this.logger.warn(`Command not found: ${fullCommandPath}`);
+    }
+  }
+
+  async handleEvent(eventType: string, data: unknown): Promise<void> {
+    this.logger.debug(`Handling event: ${eventType} with data: ${JSON.stringify(data)}`);
+    const decoratedMethods = this.events.get(eventType) || [];
+    for (const { moduleName, methodName } of decoratedMethods) {
+      const moduleData = this.modules.get(moduleName);
+      if (moduleData) {
+        const { instance: moduleInstance } = moduleData;
+        const eventMethod = moduleInstance[methodName] as (...args: unknown[]) => Promise<unknown>;
+        if (eventMethod) {
+          this.logger.debug(`Found handler for event: ${eventType} in module: ${moduleName}`);
+          const context: ScriptContext = this.createContext({
+            event: eventType,
+            ...data as Record<string, unknown>  // Spread the data object into the params
+          });
+          await eventMethod.call(moduleInstance, context);
+        } else {
+          this.logger.debug(`No handler found for event: ${eventType} in module: ${moduleName}`);
+        }
       }
     }
-    this.logger.warn(`Command not found: ${command}`);
   }
 
-  async handleEvent(eventType: string, data: any) {
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      const eventConfig = moduleConfig.events.find(e => e.name === eventType);
-      if (eventConfig) {
-        const scriptPath = join(await this.config.get("MODULES_DIR") as string, moduleName, eventConfig.script);
-        await this.executeModuleScript(moduleName, scriptPath, { event: eventType, data });
-      }
-    }
-  }
-
-  async handleSocket(socketType: string, playerId: string, eventData: any) {
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      const socketConfig = moduleConfig.sockets.find(s => s.name === socketType);
-      if (socketConfig) {
-        const scriptPath = join(await this.config.get("MODULES_DIR") as string, moduleName, socketConfig.script);
-        await this.executeModuleScript(moduleName, scriptPath, { socketType, playerId, eventData });
-        return;
+  async handleSocket(socketType: string, sender: string | null, socket: WebSocket, data: unknown): Promise<void> {
+    const decoratedMethod = this.sockets.get(socketType);
+    if (decoratedMethod) {
+      const { moduleName, methodName } = decoratedMethod;
+      const moduleData = this.modules.get(moduleName);
+      if (moduleData) {
+        const { instance: moduleInstance } = moduleData;
+        const socketMethod = moduleInstance[methodName] as (...args: unknown[]) => Promise<unknown>;
+        if (socketMethod) {
+          const context: ScriptContext = this.createContext({ socketType, sender, socket, ...data as Record<string, unknown>  });
+          await socketMethod.call(moduleInstance, context);
+          return;
+        }
       }
     }
     this.logger.warn(`Socket handler not found: ${socketType}`);
   }
 
-  addMinecraftSocket(socket: WebSocket) {
-    this.minecraftSockets.add(socket);
+  private createContext(params: Record<string, unknown>): ScriptContext {
+    const minecraftAPI = createMinecraftAPI(this.sendToMinecraft.bind(this), this.logger.info.bind(this.logger));
+    return {
+      params,
+      kv: this.kv.kv as Deno.Kv,
+      sendToMinecraft: this.sendToMinecraft.bind(this),
+      sendToPlayer: this.sendToPlayer.bind(this),
+      log: this.logger.debug.bind(this.logger),
+      api: {
+        ...minecraftAPI,
+        executeCommand: async (command: string) => {
+          return await this.executeCommand(command)
+        }
+      },
+      auth: this.auth,
+      config: this.config,
+      executeModuleScript: this.executeModuleScript.bind(this),
+    };
   }
 
-  removeMinecraftSocket(socket: WebSocket) {
+  async executeModuleScript(moduleName: string, methodName: string, params: Record<string, unknown>): Promise<unknown> {
+    const moduleData = this.modules.get(moduleName);
+    if (!moduleData) {
+      throw new Error(`Module ${moduleName} not found`);
+    }
+    const { instance: moduleInstance } = moduleData;
+    const method = moduleInstance[methodName];
+    if (typeof method !== 'function') {
+      throw new Error(`Method ${methodName} not found in module ${moduleName}`);
+    }
+    const context = this.createContext(params);
+    return await method.call(moduleInstance, context);
+  }
+
+  addMinecraftSocket(socket: WebSocket): void {
+    this.minecraftSockets.add(socket);
+
+    if (socket.readyState === WebSocket.OPEN) {
+      this.registerAllCommands().catch(error => {
+        this.logger.error(`Error registering commands after connection: ${error.message}`);
+      });
+    } else {
+      socket.addEventListener('open', () => {
+        this.registerAllCommands().catch(error => {
+          this.logger.error(`Error registering commands after connection: ${error.message}`);
+        });
+      });
+    }
+  }
+
+  removeMinecraftSocket(socket: WebSocket): void {
     this.minecraftSockets.delete(socket);
   }
 
-  addPlayerSocket(playerId: string, socket: WebSocket) {
+  addPlayerSocket(playerId: string, socket: WebSocket): void {
     this.playerSockets.set(playerId, socket);
   }
 
-  removePlayerSocket(playerId: string) {
+  removePlayerSocket(playerId: string): void {
     this.playerSockets.delete(playerId);
   }
 
-  private async sendToMinecraft(data: any): Promise<any> {
+  private async sendToMinecraft(data: unknown): Promise<unknown> {
     const COMMAND_TIMEOUT = await this.config.get('COMMAND_TIMEOUT') as number;
 
     return new Promise((resolve, reject) => {
-      if (this.minecraftSockets.size === 0) {
-        reject(new Error('No Minecraft WebSocket connections available'));
+      const openSockets = Array.from(this.minecraftSockets).filter(socket => socket.readyState === WebSocket.OPEN);
+      if (openSockets.length === 0) {
+        reject(new Error('No open Minecraft WebSocket connections available'));
         return;
       }
 
       const messageId = Date.now().toString();
       const message = {
         id: messageId,
-        ...data
+        ...(data as Record<string, unknown>)
       };
 
       this.pendingResponses.set(messageId, resolve);
 
-      for (const socket of this.minecraftSockets) {
+      for (const socket of openSockets) {
         socket.send(JSON.stringify(message));
       }
 
@@ -239,7 +397,7 @@ export class ScriptManager {
     });
   }
 
-  private sendToPlayer(playerId: string, data: any) {
+  private sendToPlayer(playerId: string, data: unknown): void {
     const socket = this.playerSockets.get(playerId);
     if (socket) {
       socket.send(JSON.stringify(data));
@@ -248,27 +406,11 @@ export class ScriptManager {
     }
   }
 
-  async registerCommand(commandData: any) {
-    this.registeredCommands.set(commandData.name, commandData);
-    await this.sendToMinecraft({
-      type: "register_command",
-      data: commandData
-    });
-  }
-
-  async loadCommands() {
-    for (const moduleConfig of this.modules.values()) {
-      for (const command of moduleConfig.commands) {
-        await this.registerCommand(command);
-      }
-    }
-  }
-
   hasPendingResponse(id: string): boolean {
     return this.pendingResponses.has(id);
   }
 
-  resolvePendingResponse(id: string, data: any) {
+  resolvePendingResponse(id: string, data: unknown): void {
     const resolver = this.pendingResponses.get(id);
     if (resolver) {
       resolver(data);
@@ -276,118 +418,39 @@ export class ScriptManager {
     }
   }
 
-  async handleMessage(data: any, type: 'minecraft' | 'fresh') {
+  async handleMessage(data: Record<string, unknown>, _type: 'minecraft' | 'fresh'): Promise<Record<string, unknown>> {
     switch (data.type) {
       case 'custom_command_executed':
-        await this.handleCommand(data.command, data.subcommand, data.arguments, data.sender, data.senderType);
-        break;
-      case 'listScripts':
-        return await this.listAllScripts();
-      case 'getScriptContent':
-        return { content: await this.getScriptContent(data.scriptType, data.scriptName) };
-      case 'updateScript':
-        await this.updateScript(data.scriptType, data.scriptName, data.scriptContent);
-        return { success: true };
-      case 'reloadAll':
-        await this.reloadAll();
-        return { success: true, message: "All scripts, events, and commands reloaded" };
+        await this.handleCommand(
+          data.command as string,
+          data.subcommand as string,
+          data.arguments,
+          data.sender as string,
+          data.senderType as string
+        );
+        return {};
       case 'command':
-        return { result: await this.executeCommand(data.data) };
+        return { result: await this.executeCommand(data.data as string) };
       case 'chat':
-        return { result: await this.broadcastMessage(data.data) };
+        return { result: await this.broadcastMessage(data.data as string) };
       case 'register_command':
-        return { result: await this.registerCommand(data.data) };
-      case 'unregister_command':
-        return { result: await this.unregisterCommand(data.data) };
-      case 'clear_commands':
-        return { result: await this.clearCommands() };
+        return { result: await this.registerCommand(data.data as any) };
       default:
         this.logger.warn(`Unknown message type: ${data.type}`);
         return { error: `Unknown message type: ${data.type}` };
     }
   }
 
-  private async listAllScripts(): Promise<{ scripts: string[], events: string[], commands: string[] }> {
-    const scripts: string[] = [];
-    const events: string[] = [];
-    const commands: string[] = [];
-
-    for (const moduleConfig of this.modules.values()) {
-      scripts.push(...moduleConfig.lib);
-      events.push(...moduleConfig.events.map(e => e.script));
-      commands.push(...moduleConfig.commands.map(c => c.script));
-    }
-
-    return { scripts, events, commands };
-  }
-
-  private async getScriptContent(type: 'script' | 'event' | 'command', name: string): Promise<string> {
-    const modulesDir = await this.config.get("MODULES_DIR") as string;
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      let script;
-      switch (type) {
-        case 'script':
-          script = moduleConfig.lib.find(s => s === name);
-          break;
-        case 'event':
-          script = moduleConfig.events.find(e => e.script === name)?.script;
-          break;
-        case 'command':
-          script = moduleConfig.commands.find(c => c.script === name)?.script;
-          break;
-      }
-      if (script) {
-        const scriptPath = join(modulesDir, moduleName, script);
-        return await Deno.readTextFile(scriptPath);
-      }
-    }
-    throw new Error(`Script not found: ${type} ${name}`);
-  }
-
-  private async updateScript(type: 'script' | 'event' | 'command', name: string, content: string): Promise<void> {
-    const modulesDir = await this.config.get("MODULES_DIR") as string;
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      let script;
-      switch (type) {
-        case 'script':
-          script = moduleConfig.lib.find(s => s === name);
-          break;
-        case 'event':
-          script = moduleConfig.events.find(e => e.script === name)?.script;
-          break;
-        case 'command':
-          script = moduleConfig.commands.find(c => c.script === name)?.script;
-          break;
-      }
-      if (script) {
-        const scriptPath = join(modulesDir, moduleName, script);
-        await Deno.writeTextFile(scriptPath, content);
-        // Invalidate cache
-        this.scriptCache.delete(`${moduleName}:${scriptPath}`);
-        return;
-      }
-    }
-    throw new Error(`Script not found: ${type} ${name}`);
-  }
-
-  private async reloadAll(): Promise<void> {
-    this.modules.clear();
-    this.scriptCache.clear();
-    this.registeredCommands.clear();
-    await this.loadModules();
-    await this.loadCommands();
-  }
-
   private async executeCommand(command: string): Promise<string> {
     try {
-      await this.sendToMinecraft({
-        type: "execute_command",
-        command: command
+      const response = await this.sendToMinecraft({
+        type: "command",
+        data: command
       });
-      return `Command "${command}" executed successfully`;
+      return (response as { result: string }).result || JSON.stringify(response);
     } catch (error) {
-      this.logger.error(`Error executing command: ${error.message}`);
-      return `Error executing command: ${error.message}`;
+      this.logger.error(`Error executing command: ${(error as Error).message}`);
+      throw error; // Re-throw the error to be handled by the caller
     }
   }
 
@@ -399,111 +462,69 @@ export class ScriptManager {
       });
       return `Message "${message}" broadcasted successfully`;
     } catch (error) {
-      this.logger.error(`Error broadcasting message: ${error.message}`);
-      return `Error broadcasting message: ${error.message}`;
+      this.logger.error(`Error broadcasting message: ${(error as Error).message}`);
+      return `Error broadcasting message: ${(error as Error).message}`;
     }
   }
 
-  private async unregisterCommand(commandName: string): Promise<string> {
-    if (this.registeredCommands.has(commandName)) {
-      this.registeredCommands.delete(commandName);
-      try {
-        await this.sendToMinecraft({
-          type: "unregister_command",
-          data: { name: commandName }
-        });
-        return `Command "${commandName}" unregistered successfully`;
-      } catch (error) {
-        this.logger.error(`Error unregistering command: ${error.message}`);
-        return `Error unregistering command: ${error.message}`;
-      }
-    } else {
-      return `Command "${commandName}" not found`;
+  public async registerAllCommands(): Promise<void> {
+    this.logger.info(`Registering ${this.commandsToRegister.size} commands...`);
+    for (const [commandName, commandMetadata] of this.commandsToRegister) {
+      await this.registerCommand(commandMetadata);
+    }
+    this.logger.info('All commands registered successfully.');
+    // Clear the commandsToRegister map after registration
+    this.commandsToRegister.clear();
+
+    this.logger.debug("Registered commands:");
+    for (const [commandPath, commandInfo] of this.commands.entries()) {
+      this.logger.debug(`  ${commandPath} -> ${commandInfo.moduleName}.${commandInfo.methodName}`);
     }
   }
 
-  private async clearCommands(): Promise<string> {
-    this.registeredCommands.clear();
+  private async registerCommand(commandMetadata: CommandMetadata): Promise<void> {
     try {
+      // Check if there's at least one open WebSocket connection
+      const openSocket = Array.from(this.minecraftSockets).find(socket => socket.readyState === WebSocket.OPEN);
+      if (!openSocket) {
+        throw new Error('No open WebSocket connections available');
+      }
+
       await this.sendToMinecraft({
-        type: "clear_commands"
+        type: "register_command",
+        data: commandMetadata
       });
-      return "All custom commands cleared";
+
+      // Store the registered command
+      this.registeredCommands.set(commandMetadata.name, commandMetadata);
+
+      this.logger.info(`Command "${commandMetadata.name}" registered successfully`);
     } catch (error) {
-      this.logger.error(`Error clearing commands: ${error.message}`);
-      return `Error clearing commands: ${error.message}`;
+      this.logger.error(`Error registering command "${commandMetadata.name}": ${(error as Error).message}`);
     }
   }
 
-  async handleCommandExecution(command: string, subcommand: string, args: any, sender: string, senderType: string) {
-    const commandScript = `${command}_${subcommand}.ts`;
-    try {
-      for (const [moduleName, moduleConfig] of this.modules.entries()) {
-        const commandConfig = moduleConfig.commands.find(c => c.name === command);
-        if (commandConfig) {
-          const scriptPath = join(await this.config.get("MODULES_DIR") as string, moduleName, commandConfig.script);
-          await this.executeModuleScript(moduleName, scriptPath, { command, subcommand, args, sender, senderType });
-          return;
-        }
+  getCommandsByPermission(permission: string): CommandMetadata[] {
+    const commands: CommandMetadata[] = [];
+
+    // Helper function to recursively process commands and their subcommands
+    const processCommand = (command: CommandMetadata) => {
+      // Check if the command has the specified permission
+      if (command.permission.includes(permission)) {
+        commands.push(command);
       }
-      this.logger.warn(`Command script not found: ${commandScript}`);
-    } catch (error: any) {
-      this.logger.error(`Error executing command script ${commandScript}: ${error.message}`);
-    }
-  }
 
-  async listScripts(dir: string): Promise<string[]> {
-    const scripts = [];
-    for await (const entry of Deno.readDir(dir)) {
-      if (entry.isFile && entry.name.endsWith(".ts")) {
-        scripts.push(entry.name);
+      // Process subcommands if they exist
+      if (command.subcommands && command.subcommands.length > 0) {
+        command.subcommands.forEach(subcommand => processCommand(subcommand));
       }
-    }
-    return scripts;
-  }
+    };
 
-  async getScriptsForEvent(eventType: string, isPlayerEvent: boolean): Promise<string[]> {
-    const scripts = [];
-    for (const moduleConfig of this.modules.values()) {
-      const eventScripts = moduleConfig.events
-        .filter(e => e.name.startsWith(`${eventType}_`))
-        .map(e => e.script);
-      scripts.push(...eventScripts);
-    }
-    return scripts;
-  }
-
-  async getScript(name: string, isPlayerEvent: boolean): Promise<string> {
-    for (const [moduleName, moduleConfig] of this.modules.entries()) {
-      const script = moduleConfig.events.find(e => e.script === name) || moduleConfig.lib.find(s => s === name);
-      if (script) {
-        const scriptPath = join(await this.config.get("MODULES_DIR") as string, moduleName, script);
-        return await Deno.readTextFile(scriptPath);
-      }
-    }
-    throw new Error(`Script not found: ${name}`);
-  }
-
-  async handleMinecraftEvent(eventType: string, data: any) {
-    this.logger.info(`Handling Minecraft event: ${eventType}`);
-    const scripts = await this.getScriptsForEvent(eventType, false);
-    for (const script of scripts) {
-      try {
-        await this.executeModuleScript(script.split('/')[0], script, { event: eventType, data });
-      } catch (error: any) {
-        this.logger.error(`Error executing Minecraft event script ${script}: ${error.message}`);
-      }
+    // Process all registered commands
+    for (const commandMetadata of this.registeredCommands.values()) {
+      processCommand(commandMetadata);
     }
 
-    switch (eventType) {
-      case 'player_joined':
-      case 'player_left':
-        // Additional handling for player join/leave events if needed
-        break;
-      case 'custom_command_executed':
-        await this.handleCommandExecution(data.command, data.subcommand, data.arguments, data.sender, data.senderType);
-        break;
-      // Add more specific event handling if needed
-    }
+    return commands;
   }
 }

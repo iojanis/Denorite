@@ -1,6 +1,7 @@
+// deno-lint-ignore-file
 // core/authService.ts
 
-import { create, verify, decode, getNumericDate } from "https://deno.land/x/djwt@v2.8/mod.ts";
+import { create, verify, getNumericDate, Header } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { ConfigManager } from "./configManager.ts";
 import { KvManager } from "./kvManager.ts";
 import { Logger } from "./logger.ts";
@@ -27,7 +28,7 @@ export class AuthService {
   }
 
   async createToken(payload: { [key: string]: any }, expiresIn: number = 3600): Promise<string> {
-    const header = { alg: "HS512", typ: "JWT" };
+    const header: Header = { alg: "HS256", typ: "JWT" };
     const nowInSeconds = Math.floor(Date.now() / 1000);
     const expirationTime = nowInSeconds + expiresIn;
 
@@ -39,7 +40,7 @@ export class AuthService {
 
     try {
       return await create(header, jwtPayload, this.jwtSecret);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Token creation failed: ${error.message}`);
       throw error;
     }
@@ -49,7 +50,11 @@ export class AuthService {
     try {
       return await verify(token, this.jwtSecret);
     } catch (error) {
-      this.logger.error(`Token verification failed: ${error.message}`);
+      if (error instanceof Error) {
+        this.logger.error(`Token verification failed: ${error.message}`);
+      } else {
+        this.logger.error('Token verification failed: Unknown error');
+      }
       return null;
     }
   }
@@ -62,7 +67,7 @@ export class AuthService {
 
     try {
       return await create({ alg: "HS256", typ: "JWT" }, payload, this.denoriteSecret);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Denorite token creation failed: ${error.message}`);
       throw error;
     }
@@ -71,8 +76,8 @@ export class AuthService {
   async verifyDenoriteToken(token: string): Promise<any> {
     try {
       return await verify(token, this.denoriteSecret);
-    } catch (error) {
-      this.logger.error(`Denorite token verification failed: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Mino token verification failed: ${error.message}`);
       return null;
     }
   }
@@ -108,7 +113,7 @@ export class AuthService {
         default:
           return false;
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Permission check failed: ${error.message}`);
       return false;
     }

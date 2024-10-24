@@ -123,7 +123,7 @@ export function listMetadata(target: any): { [key: string]: any } {
           Object.assign(result, getMapValues(nestedMetadata));
         }
       }
-      break;  // We've found what we're looking for, so we can stop searching
+      break;
     }
   }
 

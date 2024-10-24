@@ -120,11 +120,11 @@ export class Sessions {
       log(`Error in handlePlayerLeft for ${playerName} (ID: ${playerId}): ${error}`);
     }
   }
+
   @Socket('ticket_module')
   async ticketLogin({ params, kv, auth, log }: ScriptContext): Promise<void> {
     try {
-      const { eventData, socket } = params;
-      const { ticket } = eventData
+      const { ticket, socket } = params;
       log(`Received ticket login request - Ticket: ${ticket}, Socket ID: ${socket?.id}`);
 
       // Validate required parameters

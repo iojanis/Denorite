@@ -8,6 +8,7 @@ import {AuthService} from "./authService.ts";
 import {createMinecraftAPI} from "../api/minecraftAPI.ts";
 import {getMetadata, listMetadata} from "../decorators.ts";
 import {dirname, fromFileUrl, resolve} from "https://deno.land/std@0.177.0/path/mod.ts";
+import {SocketManager} from "./socketManager.ts";
 
 interface ModuleMetadata {
   name: string;
@@ -31,10 +32,19 @@ interface CommandMetadata {
   permissions: string[];
   subcommands?: any[];
 }
+
+interface UnifiedContext extends ScriptContext {
+  socket?: WebSocket;
+  socketId?: string;
+  sender?: string;
+  senderType?: string;
+  responseId?: string;
+}
 // Add this import at the top of your file
 const isCompiled = Deno.args.includes("--compiled");
 
 export class ScriptManager {
+  private socketManager: SocketManager;
   private modules: Map<string, { instance: ModuleInstance; metadata: ModuleMetadata }> = new Map();
   private config: ConfigManager;
   public kv: KvManager;
@@ -63,6 +73,7 @@ export class ScriptManager {
     this.logger = logger;
     this.auth = auth;
     this.basePath = dirname(fromFileUrl(import.meta.url));
+    this.socketManager = new SocketManager();
   }
 
   async init(): Promise<void> {
@@ -304,6 +315,39 @@ export class ScriptManager {
     this.logger.warn(`Socket handler not found: ${socketType}`);
   }
 
+  private async createUnifiedContext(params: Record<string, unknown>): Promise<UnifiedContext> {
+    const serverInfo = await this.config.get('SERVER_INFO') as {
+      name: string;
+      description: string;
+      url: string;
+      version: string;
+    };
+
+    const minecraftAPI = createMinecraftAPI(this.sendToMinecraft.bind(this), this.logger.info.bind(this.logger));
+
+    return {
+      params,
+      kv: this.kv.kv as Deno.Kv,
+      sendToMinecraft: this.sendToMinecraft.bind(this),
+      sendToPlayer: this.sendToPlayer.bind(this),
+      log: this.logger.debug.bind(this.logger),
+      api: {
+        ...minecraftAPI,
+        executeCommand: async (command: string) => {
+          return await this.executeCommand(command)
+        }
+      },
+      auth: this.auth,
+      config: this.config,
+      executeModuleScript: this.executeModuleScript.bind(this),
+      socket: params.socket as WebSocket,
+      socketId: params.socketId as string,
+      sender: params.sender as string,
+      senderType: params.senderType as string,
+      responseId: params.responseId as string
+    };
+  }
+
   private createContext(params: Record<string, unknown>): ScriptContext {
     const minecraftAPI = createMinecraftAPI(this.sendToMinecraft.bind(this), this.logger.info.bind(this.logger));
     return {
@@ -431,8 +475,6 @@ export class ScriptManager {
         return {};
       case 'command':
         return { result: await this.executeCommand(data.data as string) };
-      case 'chat':
-        return { result: await this.broadcastMessage(data.data as string) };
       case 'register_command':
         return { result: await this.registerCommand(data.data as any) };
       default:
@@ -451,19 +493,6 @@ export class ScriptManager {
     } catch (error) {
       this.logger.error(`Error executing command: ${(error as Error).message}`);
       throw error; // Re-throw the error to be handled by the caller
-    }
-  }
-
-  private async broadcastMessage(message: string): Promise<string> {
-    try {
-      await this.sendToMinecraft({
-        type: "broadcast_message",
-        message: message
-      });
-      return `Message "${message}" broadcasted successfully`;
-    } catch (error) {
-      this.logger.error(`Error broadcasting message: ${(error as Error).message}`);
-      return `Error broadcasting message: ${(error as Error).message}`;
     }
   }
 

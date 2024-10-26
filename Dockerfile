@@ -4,8 +4,6 @@ WORKDIR /app
 
 USER deno
 
-RUN mkdir -p /app/modules && chown deno:deno /app/modules
-
 COPY . .
 RUN deno cache main.ts
 

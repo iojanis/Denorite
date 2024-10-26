@@ -31,7 +31,7 @@ export class WebSocketManager {
   startMinecraftServer(port: number) {
     const that = this
     Deno.serve({ onListen() {
-        that.logger.info(`Mino WebSocket server running on ws://localhost:${port}`);
+        that.logger.info(`Denorite WebSocket server running on ws://localhost:${port}`);
       }, port }, async (req) => {
       if (req.headers.get("upgrade") != "websocket") {
         this.logger.error('no valid websocket', req)
@@ -81,7 +81,7 @@ export class WebSocketManager {
     this.scriptManager.addMinecraftSocket(socket);
 
     socket.onopen = () => {
-      this.logger.info("New Mino WebSocket connection established");
+      this.logger.debug("New Denorite WebSocket connection established");
       // this.scriptManager.loadCommands().catch(error =>
       //   this.logger.error(`Error loading commands: ${error.message}`)
       // );
@@ -96,7 +96,7 @@ export class WebSocketManager {
     };
 
     socket.onclose = () => {
-      this.logger.info("Mino WebSocket connection closed");
+      this.logger.info("Denorite WebSocket connection closed");
       this.scriptManager.removeMinecraftSocket(socket);
     };
 
@@ -107,7 +107,7 @@ export class WebSocketManager {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
     socket.onopen = () => {
-      this.logger.info("New Fresh WebSocket connection established");
+      this.logger.debug("New Fresh WebSocket connection established");
     };
 
     socket.onmessage = async (event) => {
@@ -119,7 +119,7 @@ export class WebSocketManager {
     };
 
     socket.onclose = () => {
-      this.logger.info("Fresh WebSocket connection closed");
+      this.logger.debug("Fresh WebSocket connection closed");
     };
 
     return response;
@@ -129,25 +129,25 @@ export class WebSocketManager {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
     let token: string | null = null;
-    let playerId: string | null = null;
+    let playerName: string | null = null;
 
     // Add socket ID to the socket object
     const socketId = crypto.randomUUID();
     (socket as any).id = socketId;
 
     socket.onopen = () => {
-      this.logger.info(`New player WebSocket connection established (Socket ID: ${socketId})`);
-      this.sendServerInfo(socket, 'guest')
+      this.logger.debug(`New player WebSocket connection established (Socket ID: ${socketId})`);
+      this.sendServerInfo(socket, 'guest');
     };
 
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
-        console.dir(event)
         if (message.eventType === 'auth') {
           token = message.data.token;
           const payload = await this.auth.verifyToken(token as string);
           if (payload && payload.name) {
+            playerName = payload.name; // Store the player name
             let user = {
               username: payload.name,
               role: 'player',
@@ -156,19 +156,19 @@ export class WebSocketManager {
 
             const playerRoleResult = await this.scriptManager.kv.get(['player', payload.name, 'role']);
             if (playerRoleResult === 'operator') {
-              user.role = 'operator'
-              user.permissionLevel = 1
+              user.role = 'operator';
+              user.permissionLevel = 1;
             }
 
-            this.scriptManager.addPlayerSocket(payload.name as string, socket);
+            this.scriptManager.addPlayerSocket(playerName, socket);
             socket.send(JSON.stringify({
               type: 'authenticated',
               success: true,
               socketId: socketId,
               user,
-              message: 'Logged in as ' + payload.name
+              message: 'Logged in as ' + playerName
             }));
-            this.sendServerInfo(socket, 'player')
+            this.sendServerInfo(socket, 'player');
           } else {
             socket.send(JSON.stringify({
               type: 'auth_failed',
@@ -180,9 +180,10 @@ export class WebSocketManager {
         } else if (message.eventType) {
           await this.scriptManager.handleSocket(
             message.eventType,
-            playerId ? playerId : null,
+            playerName,
             socket,
-            message.data
+            message.data,
+            message.messageId
           );
         } else {
           socket.send(JSON.stringify({
@@ -197,14 +198,15 @@ export class WebSocketManager {
     };
 
     socket.onclose = () => {
-      this.logger.info(`Player WebSocket connection closed (Socket ID: ${socketId})`);
-      if (playerId) {
-        this.scriptManager.removePlayerSocket(playerId);
+      this.logger.debug(`Player WebSocket connection closed (Socket ID: ${socketId})`);
+      if (playerName) {  // Changed from playerId to playerName
+        this.scriptManager.removePlayerSocket(playerName);
       }
     };
 
     return response;
   }
+
   sendServerInfo(socket, permission) {
     const serverName = "COU.AI"
     const serverDescription = "The Official: Craft Operations Unit Server."
@@ -272,10 +274,10 @@ export class WebSocketManager {
     const token = authHeader.split(" ")[1];
     try {
       const payload = await this.auth.verifyDenoriteToken(token);
-      this.logger.info(`Mino token verified successfully: ${JSON.stringify(payload)}`);
+      this.logger.info(`Denorite token verified successfully: ${JSON.stringify(payload)}`);
       return true;
     } catch (error: any) {
-      this.logger.error(`Mino client verification failed: ${error.message}`);
+      this.logger.error(`Denorite client verification failed: ${error.message}`);
       this.logger.error(`Token received: ${token}`);
       return false;
     }
@@ -285,7 +287,7 @@ export class WebSocketManager {
     const origin = req.headers.get("Origin");
     const allowedOrigin = await this.config.get("ALLOWED_ORIGIN") as string;
 
-    this.logger.info('Allowed origin:', allowedOrigin)
+    this.logger.debug('Allowed origin:', allowedOrigin)
 
     if (!origin) {
       this.logger.warn("No Origin header present in the request");

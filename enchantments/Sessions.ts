@@ -261,14 +261,12 @@ export class Sessions {
   }
 
   @Command(['playtime'])
-  @Socket('playtime')
   @Description('View your total playtime')
   @Permission('player')
   async playtimeCommand({ params, kv, api, sendToPlayer }: ScriptContext): Promise<void> {
     const { sender } = params;
 
     try {
-      console.dir(params)
       const totalPlayTimeResult = await kv.get<number>(['player', sender, 'totalPlayTime']);
 
       console.dir(totalPlayTimeResult.value)
@@ -288,5 +286,11 @@ export class Sessions {
     } catch (error) {
       await api.executeCommand(`tellraw ${sender} {"text":"Error retrieving playtime data.","color":"red"}`);
     }
+  }
+
+  @Socket('playtime')
+  async playtimeSocket(): Promise<string> {
+    console.log('yoooo')
+    return Promise.resolve('yoooo')
   }
 }

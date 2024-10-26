@@ -10,7 +10,7 @@ export class Economy {
   @Command(['bank', 'balance'])
   @Description('Check your bank balance')
   @Permission('player')
-  @Socket()
+  @Socket('balance')
   async checkBalance({ params, kv, api, log }: ScriptContext) {
     const { sender } = params;
     try {
@@ -35,7 +35,7 @@ export class Economy {
   @Command(['bank', 'deposit'])
   @Description('Deposit XP levels into your bank account')
   @Permission('player')
-  @Socket()
+  @Socket('deposit')
   @Argument([
     { name: 'amount', type: 'integer', description: 'The amount of XP levels to deposit' }
   ])
@@ -84,7 +84,7 @@ export class Economy {
   @Command(['bank', 'withdraw'])
   @Description('Withdraw XP levels from your bank account')
   @Permission('player')
-  @Socket()
+  @Socket('withdraw')
   @Argument([
     { name: 'amount', type: 'integer', description: 'The amount of XP levels to withdraw' }
   ])
@@ -140,7 +140,7 @@ export class Economy {
   @Command(['bank', 'send'])
   @Description('Send XP levels to another player')
   @Permission('player')
-  @Socket()
+  @Socket('send')
   @Argument([
     { name: 'player', type: 'player', description: 'The player to send XPL to' },
     { name: 'amount', type: 'integer', description: 'The amount of XPL to send' }

@@ -14,6 +14,3 @@ node_modules/
 .idea/
 kv/*
 !kv/.gitkeep
-
-scripts/
-events/

@@ -13,7 +13,6 @@ import {SocketManager} from "./socketManager.ts";
 interface ModuleMetadata {
   name: string;
   version: string;
-  servers: string | string[];
 }
 
 type ModuleInstance = {
@@ -126,8 +125,15 @@ export class ScriptManager {
           this.logger.debug(`Module metadata for ${exportName}:`, moduleMetadata);
 
           if (moduleMetadata && moduleMetadata.name && moduleMetadata.version) {
+
+            const moduleContext = this.createContext({
+              moduleName: moduleMetadata.name,
+              moduleVersion: moduleMetadata.version,
+              modulePath: modulePath
+            });
+
             this.logger.debug(`Found valid module metadata for ${exportName}. Instantiating...`);
-            const instance = new (exportedItem as new () => ModuleInstance)();
+            const instance = new (exportedItem as new (context: ScriptContext) => ModuleInstance)(moduleContext);
             this.modules.set(moduleMetadata.name, { instance, metadata: moduleMetadata });
             this.logger.info(`Loaded module: ${moduleMetadata.name} v${moduleMetadata.version}`);
 
@@ -297,22 +303,57 @@ export class ScriptManager {
     }
   }
 
-  async handleSocket(socketType: string, sender: string | null, socket: WebSocket, data: unknown): Promise<void> {
-    const decoratedMethod = this.sockets.get(socketType);
-    if (decoratedMethod) {
-      const { moduleName, methodName } = decoratedMethod;
-      const moduleData = this.modules.get(moduleName);
-      if (moduleData) {
-        const { instance: moduleInstance } = moduleData;
-        const socketMethod = moduleInstance[methodName] as (...args: unknown[]) => Promise<unknown>;
-        if (socketMethod) {
-          const context: ScriptContext = this.createContext({ socketType, sender, socket, ...data as Record<string, unknown>  });
-          await socketMethod.call(moduleInstance, context);
-          return;
+  async handleSocket(socketType: string, sender: string | null, socket: WebSocket, data: unknown, messageId: string | null = null): Promise<void> {
+    try {
+      const decoratedMethod = this.sockets.get(socketType);
+      if (decoratedMethod) {
+        const { moduleName, methodName } = decoratedMethod;
+        const moduleData = this.modules.get(moduleName);
+        if (moduleData) {
+          const { instance: moduleInstance } = moduleData;
+          const socketMethod = moduleInstance[methodName] as (...args: unknown[]) => Promise<unknown>;
+          if (socketMethod) {
+            const context: ScriptContext = this.createContext({ socketType, sender, socket, ...data as Record<string, unknown> });
+            const response = await socketMethod.call(moduleInstance, context);
+
+            // Format the response to match client expectations
+            const responsePayload = {
+              type: socketType,     // Include the event type
+              success: true,
+              data: response,       // The actual response data
+              messageId,           // Echo back the messageId if present
+              error: null          // Explicitly set error to null for success case
+            };
+
+            await socket.send(JSON.stringify(responsePayload));
+            return;
+          }
         }
       }
+
+      // If handler not found, send error response with messageId
+      const errorResponse = {
+        type: socketType,
+        success: false,
+        error: `Socket handler not found: ${socketType}`,
+        messageId,
+        data: null
+      };
+      await socket.send(JSON.stringify(errorResponse));
+      this.logger.warn(`Socket handler not found: ${socketType}`);
+
+    } catch (error) {
+      // Handle errors and ensure messageId is included in error response
+      const errorResponse = {
+        type: socketType,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        messageId,
+        data: null
+      };
+      await socket.send(JSON.stringify(errorResponse));
+      this.logger.error(`Error handling socket message: ${error}`);
     }
-    this.logger.warn(`Socket handler not found: ${socketType}`);
   }
 
   private async createUnifiedContext(params: Record<string, unknown>): Promise<UnifiedContext> {
@@ -355,6 +396,7 @@ export class ScriptManager {
       kv: this.kv.kv as Deno.Kv,
       sendToMinecraft: this.sendToMinecraft.bind(this),
       sendToPlayer: this.sendToPlayer.bind(this),
+      broadcastPlayers: this.broadcastPlayers.bind(this),
       log: this.logger.debug.bind(this.logger),
       api: {
         ...minecraftAPI,
@@ -438,6 +480,24 @@ export class ScriptManager {
           reject(new Error(`Command timed out: ${JSON.stringify(message)}`));
         }
       }, COMMAND_TIMEOUT);
+    });
+  }
+
+  private broadcastPlayers(data: unknown): void {
+    this.playerSockets.forEach((socket, playerId) => {
+      try {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(data));
+        } else {
+          // Clean up closed/dead connections
+          this.playerSockets.delete(playerId);
+          this.logger.warn(`Removed dead socket for player ${playerId}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to send message to player ${playerId}: ${error}`);
+        // Clean up failed socket
+        this.playerSockets.delete(playerId);
+      }
     });
   }
 

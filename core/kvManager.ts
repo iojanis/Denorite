@@ -16,7 +16,8 @@ export class KvManager {
 
   async init() {
     try {
-      this.kv = await Deno.openKv("./kv/denorite.db");
+      const url = Deno.env.get('DENO_KV_URL')
+      this.kv = await Deno.openKv(url);
       this.logger.debug("KV store initialized successfully");
     } catch (error: any) {
       this.logger.error(`Failed to initialize KV store: ${error.message}`);

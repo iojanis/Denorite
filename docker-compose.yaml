@@ -1,15 +1,30 @@
 services:
+  kv:
+    container_name: denorite-kv
+    image: ghcr.io/denoland/denokv:latest
+    command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
+    volumes:
+      - kv-data:/data
+    expose:
+      - 4512
+
   app:
     container_name: denorite
     build: .
-    ports:
-      - "8082:8082"
-      - "8081:8081"
+    expose:
+      - 8082
+      - 8081
+    environment:
+      - DENO_KV_URL=${DENO_KV_URL}
+      - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
+      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN}
+      - DENORITE_SECRET=${DENORITE_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
-      - .:/app
-      - kv-data:/app/kv
-      - enchantments:/app/enchantments
+      - modules-data:/app/modules
+    depends_on:
+      - kv
 
 volumes:
   kv-data:
-  enchantments:
+  modules-data:

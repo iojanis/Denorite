@@ -165,15 +165,6 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       }
     },
 
-    // async getPlayerPosition(player: string): Promise<{ x: number, y: number, z: number }> {
-    //   const data = await this.getPlayerData(player);
-    //   return {
-    //     x: data.Pos[0],
-    //     y: data.Pos[1],
-    //     z: data.Pos[2]
-    //   };
-    // },
-
     async kill(target: string): Promise<string> {
       return await executeCommand(`kill ${target}`);
     },

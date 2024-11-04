@@ -1,8 +1,8 @@
 // deno-lint-ignore-file
 // types.d.ts
 
-import { ConfigManager } from "./core/configManager.ts";
-import { AuthService } from "./core/authService.ts";
+import { ConfigManager } from "./core/ConfigManager.ts";
+import { AuthService } from "./core/AuthService.ts";
 
 interface RateLimitRule {
   tokensPerInterval: number;

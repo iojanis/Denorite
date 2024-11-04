@@ -92,8 +92,6 @@ export class Welcome {
     try {
       const playerData = await this.getPlayerData(playerName, kv);
 
-      console.dir(playerData)
-
       if (!playerData) {
         // New player
         await this.sendWelcomeMessage(playerName, `Welcome to the server, ${playerName}! We hope you enjoy your stay!`, api);
@@ -105,7 +103,7 @@ export class Welcome {
       const totalPlayTime = playerData.stats.totalPlayTime ? this.formatDuration(playerData.stats.totalPlayTime) : 'an unknown amount of time';
       const loginCount = playerData.stats.loginCount || 1;
 
-      let welcomeMessage = `Welcome back, ${playerName}! `;
+      let welcomeMessage = `Hello, ${playerName}! `;
       welcomeMessage += `It's been ${timeSinceLastSeen} since we last saw you. `;
       welcomeMessage += `You've played for a total of ${totalPlayTime}. `;
       welcomeMessage += `This is your ${loginCount}${this.getOrdinalSuffix(loginCount)} login.`;
@@ -120,7 +118,7 @@ export class Welcome {
       }
 
       // Server announcements or tips
-      await this.sendServerAnnouncements(playerName, api);
+      // await this.sendServerAnnouncements(playerName, api);
 
     } catch (error) {
       log(`Error in handlePlayerJoined for ${playerName} (ID: ${playerId}): ${error}`);

@@ -16,7 +16,7 @@ export class Sessions {
   }
 
   @Event('player_joined')
-  async handlePlayerJoined({ params, kv, log }: ScriptContext): Promise<void> {
+  async handlePlayerJoined({ params, kv, log, api }: ScriptContext): Promise<void> {
     const { playerId, playerName, x, y, z, dimension } = params;
 
     log(`Player joined: ${playerName} (ID: ${playerId})`);
@@ -68,6 +68,7 @@ export class Sessions {
       await kv.set(['player', playerName, 'sessions', sessionId], sessionData);
       await kv.set(['player', playerName, 'currentSession'], sessionId);
 
+      await api.tellraw(playerName, `{"text":"Your Ticket: ${playerTicket}","color":"gold"}`)
     } catch (error) {
       log(`Error in handlePlayerJoined for ${playerName} (ID: ${playerId}): ${error}`);
     }
@@ -268,8 +269,6 @@ export class Sessions {
 
     try {
       const totalPlayTimeResult = await kv.get<number>(['player', sender, 'totalPlayTime']);
-
-      console.dir(totalPlayTimeResult.value)
 
       if (!totalPlayTimeResult.value) {
         await api.executeCommand(`tellraw ${sender} {"text":"No playtime data found.","color":"red"}`);

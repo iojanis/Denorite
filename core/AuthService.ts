@@ -2,7 +2,7 @@
 // core/authService.ts
 
 import { create, verify, getNumericDate, Header } from "https://deno.land/x/djwt@v2.8/mod.ts";
-import { ConfigManager } from "./configManager.ts";
+import { ConfigManager } from "./ConfigManager.ts";
 import { KvManager } from "./kvManager.ts";
 import { Logger } from "./logger.ts";
 

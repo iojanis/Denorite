@@ -12,11 +12,13 @@ export class KvManager {
 
   constructor(logger: Logger) {
     this.logger = logger;
+    this.logger.debug("KvManager instance created");
   }
 
   async init() {
     try {
       const url = Deno.env.get('DENO_KV_URL')
+      this.logger.debug(`Initializing KV store${url ? ` with URL: ${url}` : ' with default path'}`);
       this.kv = await Deno.openKv(url);
       this.logger.debug("KV store initialized successfully");
     } catch (error: any) {
@@ -27,13 +29,14 @@ export class KvManager {
 
   private assertKvInitialized() {
     if (!this.kv) {
+      this.logger.error("Attempted to use KV store before initialization");
       throw new Error("KV store not initialized. Call init() first.");
     }
   }
 
-  async get(key: Deno.KvKey): Promise<unknown> {
+  async get<T = unknown>(key: Deno.KvKey): Promise<T | null> {
     this.assertKvInitialized();
-    const result = await this.kv!.get(key as Deno.KvKey);
+    const result = await this.kv!.get<T>(key);
     return result.value;
   }
 
@@ -54,12 +57,12 @@ export class KvManager {
     return this.kv!.list({ prefix }, options);
   }
 
-  watch(key: Deno.KvKey, callback: (changedKey: Deno.KvKey, newValue: unknown) => Promise<void>): void {
+  watch(key: Deno.KvKey, callback: (value: unknown) => void): void {
     const keyString = JSON.stringify(key);
     if (!this.watchers.has(keyString)) {
       this.watchers.set(keyString, new Set());
     }
-    this.watchers.get(keyString)!.add(callback as any);
+    this.watchers.get(keyString)!.add(callback);
   }
 
   unwatch(key: KvKey, callback: (value: unknown) => void): void {
@@ -69,10 +72,11 @@ export class KvManager {
 
   private notifyWatchers(key: KvKey, value: unknown): void {
     const keyString = JSON.stringify(key);
+    const watcherCount = this.watchers.get(keyString)?.size || 0;
     this.watchers.get(keyString)?.forEach(callback => callback(value));
   }
 
-  async atomic(): Promise<Deno.AtomicOperation> {
+  atomic(): Deno.AtomicOperation {
     this.assertKvInitialized();
     return this.kv!.atomic();
   }
@@ -82,26 +86,26 @@ export class KvManager {
     callback: (value: T | null) => Promise<T>
   ): Promise<T> {
     this.assertKvInitialized();
+
     while (true) {
       const result = await this.kv!.get<T>(key);
+      const newValue = await callback(result.value);
+
+      const atomic = this.kv!.atomic();
       if (!result.versionstamp) {
-        // Key doesn't exist, create it
-        const newValue = await callback(null);
-        const ok = await this.kv!.atomic()
-          .check({ key, versionstamp: null })
-          .set(key, newValue)
-          .commit();
-        if (ok) return newValue;
+        atomic.check({ key, versionstamp: null });
       } else {
-        // Key exists, try to update it
-        const newValue = await callback(result.value);
-        const ok = await this.kv!.atomic()
-          .check(result)
-          .set(key, newValue)
-          .commit();
-        if (ok) return newValue;
+        atomic.check(result);
       }
-      // If we're here, the atomic operation failed. Try again.
+
+      const commitResult = await atomic
+        .set(key, newValue)
+        .commit();
+
+      if (commitResult) {
+        return newValue;
+      }
+
     }
   }
 
@@ -109,7 +113,9 @@ export class KvManager {
     if (this.kv) {
       await this.kv.close();
       this.kv = null;
-      this.logger.info("KV store closed");
+      this.logger.info("KV store closed successfully");
+    } else {
+      this.logger.debug("KV store was already closed");
     }
   }
 }

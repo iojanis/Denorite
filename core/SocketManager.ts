@@ -1,16 +1,18 @@
 // deno-lint-ignore-file
 // core/webSocketManager.ts
 
-import { ConfigManager } from "./configManager.ts";
-import { ScriptManager } from "./scriptManager.ts";
+import { ConfigManager } from "./ConfigManager.ts";
+import { ScriptManager } from "./ScriptManager.ts";
 import { Logger } from "./logger.ts";
-import { AuthService } from "./authService.ts";
+import { AuthService } from "./AuthService.ts";
+import {RateLimiter} from "./RateLimiter.ts";
 
-export class WebSocketManager {
+export class SocketManager {
   private config: ConfigManager;
   private scriptManager: ScriptManager;
   private logger: Logger;
   private auth: AuthService;
+  private rateLimiter!: RateLimiter;
 
   constructor(
     config: ConfigManager,
@@ -22,40 +24,65 @@ export class WebSocketManager {
     this.scriptManager = scriptManager;
     this.logger = logger;
     this.auth = auth;
+
+    if (!this.scriptManager.kv) return
+    this.rateLimiter = new RateLimiter(this.scriptManager.kv.kv);
+
+    this.rateLimiter.setMethodCost('custom_command_executed', 5);
+    this.rateLimiter.setMethodCost('auth', 3);
   }
 
   async init() {
-    //
+    this.logger.info('SocketManager initialized')
+  }
+
+  private getClientIp(connInfo: Deno.ServeHandlerInfo): Deno.Addr {
+    return connInfo?.remoteAddr;
   }
 
   startMinecraftServer(port: number) {
-    const that = this
-    Deno.serve({ onListen() {
+    const that = this;
+    Deno.serve({
+      onListen() {
         that.logger.info(`Denorite WebSocket server running on ws://localhost:${port}`);
-      }, port }, async (req) => {
-      if (req.headers.get("upgrade") != "websocket") {
-        this.logger.error('no valid websocket', req)
-        return new Response(null, { status: 501 });
-      }
-
-      if (!await this.checkOrigin(req)) {
-        this.logger.error('no valid origin', req)
-        return new Response("Forbidden: Origin not allowed", { status: 403 });
-      }
-
+      },
+      port
+    }, async (req, conInfo) => {
       const url = new URL(req.url);
+      const clientIp = this.getClientIp(conInfo);
 
-      // Verify JWT token for all connections
-      const isValidToken = await this.verifyMinoToken(req);
-      if (!isValidToken) {
+      const isAuthenticated = await this.verifyDenoriteToken(req);
+      console.log(clientIp)
+
+      const rateLimitResult = await this.rateLimiter.handleMinecraftServerRateLimit(
+        clientIp.hostname as unknown as string,
+        isAuthenticated
+      );
+
+      if (!rateLimitResult.allowed) {
+        this.logger.error(`Rate limit exceeded for IP ${clientIp}`);
+        return new Response(rateLimitResult.error, { status: 429 });
+      }
+
+      if (!isAuthenticated) {
         this.logger.error('Unauthorized: Invalid or missing Bearer token');
         return new Response("Unauthorized: Invalid or missing Bearer token", { status: 401 });
       }
 
+      if (req.headers.get("upgrade") != "websocket") {
+        this.logger.error('no valid websocket', req);
+        return new Response(null, { status: 501 });
+      }
+
+      if (!await this.checkOrigin(req)) {
+        this.logger.error('no valid origin', req);
+        return new Response("Forbidden: Origin not allowed", { status: 403 });
+      }
+
       if (url.pathname === "/minecraft") {
         return this.handleMinecraftWebSocket(req);
-      } else if (url.pathname === "/fresh") {
-        return this.handleFreshWebSocket(req);
+      } else if (url.pathname === "/runner") {
+        return this.handleRunnerWebSocket(req);
       } else {
         return new Response("Not Found", { status: 404 });
       }
@@ -67,11 +94,11 @@ export class WebSocketManager {
     const that = this
     Deno.serve({ onListen() {
         that.logger.info(`Player WebSocket server running on ws://localhost:${port}`);
-      }, port }, async (req) => {
+      }, port }, async (req, conInfo) => {
       if (req.headers.get("upgrade") != "websocket") {
         return new Response(null, { status: 501 });
       }
-      return this.handlePlayerWebSocket(req);
+      return this.handlePlayerWebSocket(req, conInfo);
     });
   }
 
@@ -82,9 +109,6 @@ export class WebSocketManager {
 
     socket.onopen = () => {
       this.logger.debug("New Denorite WebSocket connection established");
-      // this.scriptManager.loadCommands().catch(error =>
-      //   this.logger.error(`Error loading commands: ${error.message}`)
-      // );
     };
 
     socket.onmessage = async (event) => {
@@ -103,33 +127,35 @@ export class WebSocketManager {
     return response;
   }
 
-  private handleFreshWebSocket(req: Request): Response {
+  private handleRunnerWebSocket(req: Request): Response {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
     socket.onopen = () => {
-      this.logger.debug("New Fresh WebSocket connection established");
+      this.logger.debug("New Runner WebSocket connection established");
     };
 
     socket.onmessage = async (event) => {
       try {
-        await this.handleWebSocketMessage(event.data, socket, 'fresh');
+        await this.handleWebSocketMessage(event.data, socket, 'runner');
       } catch (error: any) {
-        this.logger.error(`Error processing Fresh WebSocket message: ${error.message}`);
+        this.logger.error(`Error processing Runner WebSocket message: ${error.message}`);
       }
     };
 
     socket.onclose = () => {
-      this.logger.debug("Fresh WebSocket connection closed");
+      this.logger.debug("Runner WebSocket connection closed");
     };
 
     return response;
   }
 
-  private handlePlayerWebSocket(req: Request): Response {
+  private handlePlayerWebSocket(req: Request, conInfo): Response {
     const { socket, response } = Deno.upgradeWebSocket(req);
+    const clientIp = this.getClientIp(conInfo);
 
     let token: string | null = null;
     let playerName: string | null = null;
+    let userRole: 'guest' | 'authenticated' | 'operator' = 'guest';
 
     // Add socket ID to the socket object
     const socketId = crypto.randomUUID();
@@ -143,21 +169,41 @@ export class WebSocketManager {
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
+
+        // Rate limit check based on user role and message type
+        const rateLimitResult = await this.rateLimiter.handleSocketRateLimit(
+          clientIp.hostname as unknown as string,
+          message.eventType || 'message',
+          userRole
+        );
+
+        if (!rateLimitResult.allowed) {
+          socket.send(JSON.stringify({
+            type: 'error',
+            socketId: socketId,
+            message: rateLimitResult.error
+          }));
+          return;
+        }
+
         if (message.eventType === 'auth') {
           token = message.data.token;
           const payload = await this.auth.verifyToken(token as string);
           if (payload && payload.name) {
-            playerName = payload.name; // Store the player name
+            playerName = payload.name;
+            userRole = 'authenticated';
+
             let user = {
               username: payload.name,
               role: 'player',
               permissionLevel: 1
-            }
+            };
 
             const playerRoleResult = await this.scriptManager.kv.get(['player', payload.name, 'role']);
             if (playerRoleResult === 'operator') {
               user.role = 'operator';
               user.permissionLevel = 1;
+              userRole = 'operator';
             }
 
             this.scriptManager.addPlayerSocket(playerName, socket);
@@ -168,6 +214,7 @@ export class WebSocketManager {
               user,
               message: 'Logged in as ' + playerName
             }));
+
             this.sendServerInfo(socket, 'player');
           } else {
             socket.send(JSON.stringify({
@@ -199,7 +246,7 @@ export class WebSocketManager {
 
     socket.onclose = () => {
       this.logger.debug(`Player WebSocket connection closed (Socket ID: ${socketId})`);
-      if (playerName) {  // Changed from playerId to playerName
+      if (playerName) {
         this.scriptManager.removePlayerSocket(playerName);
       }
     };
@@ -213,6 +260,11 @@ export class WebSocketManager {
     const serverUrl = "cou.ai"
     const minecraftVersion = "1.20.4"
     const commands = this.scriptManager.getCommandsByPermission(permission)
+    const extras = {
+      apps: [
+
+      ]
+    }
     socket.send(JSON.stringify({
       type: 'server_info',
       success: true,
@@ -220,11 +272,12 @@ export class WebSocketManager {
       serverDescription,
       serverUrl,
       minecraftVersion,
-      commands
+      commands,
+      ...extras
     }));
   }
 
-  private async handleWebSocketMessage(message: string, socket: WebSocket, type: 'minecraft' | 'fresh') {
+  private async handleWebSocketMessage(message: string, socket: WebSocket, type: 'minecraft' | 'runner') {
     try {
       const data = JSON.parse(message);
       this.logger.debug(`Received ${type} message: ${JSON.stringify(data)}`);
@@ -263,7 +316,7 @@ export class WebSocketManager {
     }
   }
 
-  private async verifyMinoToken(req: Request): Promise<boolean> {
+  private async verifyDenoriteToken(req: Request): Promise<boolean> {
     const authHeader = req.headers.get("Authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {

@@ -1,5 +1,5 @@
 import type { Api } from "./types.d.ts";
-import {AuthService} from "./core/authService.ts";
+import {AuthService} from "./core/AuthService.ts";
 
 export interface ScriptContext {
   params: Record<string, any>;

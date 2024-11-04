@@ -8,8 +8,8 @@ services:
     expose:
       - 4512
 
-  app:
-    container_name: denorite
+  server:
+    container_name: denorite-srv
     build: .
     expose:
       - 8082
@@ -24,7 +24,29 @@ services:
       - modules-data:/app/modules
     depends_on:
       - kv
+      -
+#  runner:
+#    container_name: denorite-run
+#    build: .
+#    expose:
+#      - ${RUNNER_MINECRAFT_WS_PORT}
+#      - ${RUNNER_PLAYER_WS_PORT}
+#    environment:
+#      - RUNNER=true
+#      - MINECRAFT_WS_PORT=${RUNNER_MINECRAFT_WS_PORT}
+#      - PLAYER_WS_PORT=${RUNNER_PLAYER_WS_PORT}
+#      - DENO_KV_URL=${DENO_KV_URL}
+#      - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
+#      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN}
+#      - DENORITE_SECRET=${DENORITE_SECRET}
+#      - JWT_SECRET=${JWT_SECRET}
+#    volumes:
+#      - runner-modules-data:/app/modules
+#    depends_on:
+#      - kv
+#      - server
 
 volumes:
   kv-data:
   modules-data:
+  runner-modules-data:

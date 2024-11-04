@@ -2,12 +2,13 @@
 import { encode as base64Encode, decode as base64Decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 import "jsr:@std/dotenv/load";
 
-import { ConfigManager } from "./core/configManager.ts";
+import { ConfigManager } from "./core/ConfigManager.ts";
 import { KvManager } from "./core/kvManager.ts";
 import { Logger } from "./core/logger.ts";
-import { AuthService } from "./core/authService.ts";
-import { ScriptManager } from "./core/scriptManager.ts";
-import { WebSocketManager } from "./core/webSocketManager.ts";
+import { AuthService } from "./core/AuthService.ts";
+import { ScriptManager } from "./core/ScriptManager.ts";
+import { SocketManager } from "./core/SocketManager.ts";
+import {printColoredPotion, printHeader} from "./core/DragonsBreath.ts";
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -51,6 +52,11 @@ async function loadOrGenerateJwtSecret(envVarName: string): Promise<CryptoKey> {
 }
 
 async function main() {
+  printColoredPotion()
+  const isRunner = Deno.args.includes("--runner");
+  if (isRunner) printHeader()
+
+
   const logger = new Logger();
 
   const kvManager = new KvManager(logger);
@@ -69,7 +75,8 @@ async function main() {
   await scriptManager.init();
   await scriptManager.loadModules(); // Added this line to load modules
 
-  const wsManager = new WebSocketManager(configManager, scriptManager, logger, authService);
+
+  const wsManager = new SocketManager(configManager, scriptManager, logger, authService);
   await wsManager.init();
 
   const minecraftWsPort = await configManager.get('MINECRAFT_WS_PORT') as number;
@@ -77,10 +84,13 @@ async function main() {
 
   // Generate and log a Denorite server token
   const serverToken = await authService.createDenoriteToken(360 * 24 * 60 * 60); // 360 days
-  // logger.info('Mino Server Token: ' + serverToken);
+  logger.info('Denorite Server Token: ' + serverToken);
 
   wsManager.startMinecraftServer(minecraftWsPort);
   wsManager.startPlayerServer(playerWsPort);
+
+  logger.info('Accepting Denorite Connections')
+  logger.info('Accepting Player Connections')
 
   // Keep the process running
   await new Promise(() => {});

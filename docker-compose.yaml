@@ -24,7 +24,6 @@ services:
       - modules-data:/app/modules
     depends_on:
       - kv
-      -
 #  runner:
 #    container_name: denorite-run
 #    build: .

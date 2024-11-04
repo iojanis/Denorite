@@ -7,7 +7,9 @@ import { ScriptContext } from '../types.ts';
 })
 export class ChunkGenTeleport {
   private readonly TELEPORT_DELAY = 3000; // 3 seconds
-  private readonly SPACING = 32; // Distance between teleports (2 chunks)
+  private readonly SPACING = 128; // Distance between teleports (8 chunks)
+  private readonly CENTER_X = 15360; // (30719 / 2)
+  private readonly CENTER_Z = 7999;  // (15997 / 2)
   private activeGenerators: Map<string, boolean> = new Map();
 
   private sleep(ms: number): Promise<void> {
@@ -20,8 +22,8 @@ export class ChunkGenTeleport {
     const radius = this.SPACING * (angle / (2 * Math.PI));
 
     return {
-      x: Math.floor(radius * Math.cos(angle)),
-      z: Math.floor(radius * Math.sin(angle))
+      x: this.CENTER_X + Math.floor(radius * Math.cos(angle)),
+      z: this.CENTER_Z + Math.floor(radius * Math.sin(angle))
     };
   }
 
@@ -39,24 +41,28 @@ export class ChunkGenTeleport {
     }
 
     try {
+      // First teleport to actual map center
+      await api.teleport(sender, this.CENTER_X, '~', this.CENTER_Z);
+      await this.sleep(this.TELEPORT_DELAY);
+
       this.activeGenerators.set(sender, true);
       await api.executeCommand(
-        `tellraw ${sender} {"text":"Starting chunk generation. Use /stopgen to stop.","color":"green"}`
+        `tellraw ${sender} {"text":"Starting chunk generation from map center. Use /gen stop to stop.","color":"green"}`
       );
 
       let step = 0;
 
       while (this.activeGenerators.get(sender)) {
-        const offset = this.calculateSpiralOffset(step);
+        const pos = this.calculateSpiralOffset(step);
 
-        // Teleport player using relative coordinates
-        await api.teleport(sender, `~${offset.x}`, `~`, `~${offset.z}`);
+        // Teleport player using absolute coordinates from true center
+        await api.teleport(sender, pos.x, '~', pos.z);
 
         // Log progress every 100 steps
         if (step % 100 === 0) {
-          log(`Generation progress - Step: ${step}, Offset: ${offset.x}, ${offset.z}`);
+          log(`Generation progress - Step: ${step}, Position: ${pos.x}, ${pos.z}`);
           await api.executeCommand(
-            `tellraw ${sender} {"text":"Generated offset: ${offset.x}, ${offset.z}","color":"gray"}`
+            `tellraw ${sender} {"text":"Generated position: ${pos.x}, ${pos.z}","color":"gray"}`
           );
         }
 

@@ -50,7 +50,8 @@ interface AuthContext {
 interface Api {
   executeCommand(command: string): Promise<string>;
   xp(mode: 'get' | 'set' | 'add' | 'remove', target: string, amount?: number, type?: 'points' | 'levels'): Promise<string>;
-  teleport(target: string, x: number, y: number, z: number): Promise<string>;
+
+  teleport(target: string, x: string, y: string, z: string): Promise<string>;
   give(target: string, item: string, amount?: number): Promise<string>;
   clear(target: string, item?: string, maxCount?: number): Promise<string>;
   setBlock(x: number, y: number, z: number, block: string): Promise<string>;

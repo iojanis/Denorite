@@ -6,7 +6,7 @@ import { ScriptContext } from '../types.ts';
   version: '1.0.0'
 })
 export class ChunkGenTeleport {
-  private readonly TELEPORT_DELAY = 3000; // 3 seconds
+  private readonly TELEPORT_DELAY = 6000; // 3 seconds
   private readonly SPACING = 128; // Distance between teleports (8 chunks)
   private readonly CENTER_X = 15360; // (30719 / 2)
   private readonly CENTER_Z = 7999;  // (15997 / 2)

@@ -25,7 +25,7 @@ export class ChunkGenTeleport {
     };
   }
 
-  @Command(['startgen'])
+  @Command(['gen', 'start'])
   @Description('Start continuous chunk generation teleport')
   @Permission('operator')
   async startGeneration({ params, api, log }: ScriptContext): Promise<void> {
@@ -73,7 +73,7 @@ export class ChunkGenTeleport {
     }
   }
 
-  @Command(['stopgen'])
+  @Command(['gen', 'stop'])
   @Description('Stop continuous chunk generation teleport')
   @Permission('operator')
   async stopGeneration({ params, api }: ScriptContext): Promise<void> {
@@ -91,7 +91,7 @@ export class ChunkGenTeleport {
     }
   }
 
-  @Command(['genstatus'])
+  @Command(['gen', 'status'])
   @Description('Check chunk generation status')
   @Permission('operator')
   async generationStatus({ params, api }: ScriptContext): Promise<void> {

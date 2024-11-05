@@ -1,39 +1,41 @@
 import { relative } from "https://deno.land/std@0.177.0/path/mod.ts";
+import type { ScriptManager } from "./ScriptManager.ts";
+import type { Logger } from "./logger.ts";
 
+// ModuleWatcher.ts
 export class ModuleWatcher {
-  private scriptManager: any;
-  private logger: any;
-  private modulesPath: string;
-  private lastReload: { [key: string]: number } = {};
+  private scriptManager: ScriptManager;
+  private logger: Logger;
+  private watchDir: string;
 
-  constructor(scriptManager: any, logger: any, modulesPath: string) {
+  constructor(scriptManager: ScriptManager, logger: Logger, watchDir: string) {
     this.scriptManager = scriptManager;
     this.logger = logger;
-    this.modulesPath = modulesPath;
+    this.watchDir = watchDir;
   }
 
-  watch() {
+  async watch() {
     try {
-      const watcher = Deno.watchFs(this.modulesPath);
-      this.logger.info(`Started watching for changes in: ${this.modulesPath}`);
+      const watcher = Deno.watchFs(this.watchDir);
 
-      (async () => {
-        for await (const event of watcher) {
-          if (event.kind === "modify") {
-            const path = event.paths[0];
+      for await (const event of watcher) {
+        if (event.kind === "modify") {
+          for (const path of event.paths) {
             if (path.endsWith('.ts')) {
-              const relativePath = relative(Deno.cwd(), path);
-              const now = Date.now();
+              // Wait for a small delay to ensure file write is complete
+              await new Promise(resolve => setTimeout(resolve, 100));
 
-              // Only reload if more than 100ms has passed since last reload
-              if (!this.lastReload[relativePath] || (now - this.lastReload[relativePath]) > 100) {
-                this.lastReload[relativePath] = now;
-                await this.scriptManager.loadModule(relativePath);
+              try {
+                // Reload the specific module
+                await this.scriptManager.loadModule(path);
+                this.logger.info(`Reloaded module: ${path}`);
+              } catch (error) {
+                this.logger.error(`Failed to reload module ${path}: ${error}`);
               }
             }
           }
         }
-      })();
+      }
     } catch (error) {
       this.logger.error(`Watch error: ${error}`);
     }

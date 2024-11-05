@@ -88,10 +88,10 @@ export class ScriptManager {
     }
   }
 
-  private async loadModule(modulePath: string): Promise<void> {
+  public async loadModule(modulePath: string): Promise<void> {
     try {
       const moduleImport = !isCompiled
-        ? await import(`file://${Deno.cwd()}/${modulePath}`)
+        ? await import(`file://${Deno.cwd()}/${modulePath}?=${Date.now()}`)  // Add cache-busting
         : await this.importModule(modulePath);
 
       await this.interpreter.loadModule(modulePath, moduleImport);

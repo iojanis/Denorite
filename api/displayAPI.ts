@@ -17,15 +17,17 @@ interface ConsoleOptions {
   textColor?: string;
 }
 
-export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunction) {
-  const consoles = new Map<string, DisplayConsole>();
-  const DEFAULT_OPTIONS: Required<ConsoleOptions> = {
-    width: 200,
-    height: 10,
-    backgroundColor: 0xFF000000, // Black background with full opacity
-    textColor: "§a" // Minecraft color code for green
-  };
+// Create a truly static Map that persists across multiple createDisplayAPI calls
+const GLOBAL_CONSOLES = new Map<string, DisplayConsole>();
 
+const DEFAULT_OPTIONS: Required<ConsoleOptions> = {
+  width: 200,
+  height: 10,
+  backgroundColor: 0xFF000000, // Black background with full opacity
+  textColor: "§a" // Minecraft color code for green
+};
+
+export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunction) {
   async function executeCommand(command: string): Promise<string> {
     try {
       const result = await sendToMinecraft({ type: 'command', data: command });
@@ -38,6 +40,32 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
       log(`Display API command error: ${error}`);
       throw error;
     }
+  }
+
+  async function verifyConsoleExists(id: string): Promise<DisplayConsole> {
+    const consoleObject = GLOBAL_CONSOLES.get(id);
+    if (!consoleObject) {
+      // Try to verify if the entity exists in the game before throwing error
+      const result = await executeCommand(`data get entity @e[type=text_display,tag=console_${id},limit=1]`);
+      if (result.includes("No entity was found")) {
+        log(`Available consoles: ${Array.from(GLOBAL_CONSOLES.keys()).join(', ')}`);
+        throw new Error(`Console with ID ${id} not found`);
+      }
+      // If entity exists but not in our state, recreate the state
+      log(`Reconstructing state for existing console ${id}`);
+      const newConsole: DisplayConsole = {
+        id,
+        x: 0, // These will be approximate
+        y: 0,
+        z: 0,
+        width: DEFAULT_OPTIONS.width,
+        height: DEFAULT_OPTIONS.height,
+        lines: []
+      };
+      GLOBAL_CONSOLES.set(id, newConsole);
+      return newConsole;
+    }
+    return consoleObject;
   }
 
   return {
@@ -58,7 +86,7 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
       };
 
       // Store in internal map first
-      consoles.set(id, consoleObject);
+      GLOBAL_CONSOLES.set(id, consoleObject);
       log(`Created console object in memory for ${id}`);
 
       // Create the display entity
@@ -69,7 +97,7 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
         line_width: config.width,
         see_through: false,
         alignment: "left",
-        Tags: ["display_console", `console_${id}`] // Add unique tag per console
+        Tags: ["display_console", `console_${id}`]
       };
 
       const command = `summon text_display ${x} ${y} ${z} {${Object.entries(nbt)
@@ -83,13 +111,7 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
     async log(id: string, message: string): Promise<void> {
       log(`Display API logging to console ${id}: ${message}`);
 
-      const consoleObject = consoles.get(id);
-      if (!consoleObject) {
-        log(`Display API: Console ${id} not found in internal state`);
-        const availableConsoles = Array.from(consoles.keys()).join(', ');
-        log(`Available consoles: ${availableConsoles}`);
-        throw new Error(`Console with ID ${id} not found`);
-      }
+      const consoleObject = await verifyConsoleExists(id);
 
       // Update lines
       consoleObject.lines.push(message);
@@ -110,11 +132,7 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
     async clear(id: string): Promise<void> {
       log(`Display API clearing console ${id}`);
 
-      const consoleObject = consoles.get(id);
-      if (!consoleObject) {
-        throw new Error(`Console with ID ${id} not found`);
-      }
-
+      const consoleObject = await verifyConsoleExists(id);
       consoleObject.lines = [];
       await executeCommand(`data modify entity @e[type=text_display,tag=console_${id},limit=1] text set value '{"text":""}'`);
     },
@@ -122,23 +140,15 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
     async remove(id: string): Promise<void> {
       log(`Display API removing console ${id}`);
 
-      const consoleObject = consoles.get(id);
-      if (!consoleObject) {
-        throw new Error(`Console with ID ${id} not found`);
-      }
-
+      await verifyConsoleExists(id);
       await executeCommand(`kill @e[type=text_display,tag=console_${id},limit=1]`);
-      consoles.delete(id);
+      GLOBAL_CONSOLES.delete(id);
     },
 
     async setPosition(id: string, x: number, y: number, z: number): Promise<void> {
       log(`Display API moving console ${id} to ${x},${y},${z}`);
 
-      const consoleObject = consoles.get(id);
-      if (!consoleObject) {
-        throw new Error(`Console with ID ${id} not found`);
-      }
-
+      const consoleObject = await verifyConsoleExists(id);
       await executeCommand(`tp @e[type=text_display,tag=console_${id},limit=1] ${x} ${y} ${z}`);
 
       consoleObject.x = x;
@@ -149,11 +159,7 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
     async resize(id: string, width: number, height: number): Promise<void> {
       log(`Display API resizing console ${id} to ${width}x${height}`);
 
-      const consoleObject = consoles.get(id);
-      if (!consoleObject) {
-        throw new Error(`Console with ID ${id} not found`);
-      }
-
+      const consoleObject = await verifyConsoleExists(id);
       consoleObject.width = width;
       consoleObject.height = height;
 
@@ -171,15 +177,15 @@ export function createDisplayAPI(sendToMinecraft: SendToMinecraft, log: LogFunct
     },
 
     hasConsole(id: string): boolean {
-      return consoles.has(id);
+      return GLOBAL_CONSOLES.has(id);
     },
 
     getConsole(id: string): DisplayConsole | undefined {
-      return consoles.get(id);
+      return GLOBAL_CONSOLES.get(id);
     },
 
     listConsoles(): string[] {
-      return Array.from(consoles.keys());
+      return Array.from(GLOBAL_CONSOLES.keys());
     }
   };
 }

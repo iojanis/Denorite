@@ -74,12 +74,7 @@ export class AuthService {
   }
 
   async verifyDenoriteToken(token: string): Promise<any> {
-    try {
-      return await verify(token, this.denoriteSecret);
-    } catch (error: any) {
-      this.logger.error(`Mino token verification failed: ${error.message}`);
-      return null;
-    }
+    return await verify(token, this.denoriteSecret);
   }
 
   async checkPermission(token: string | null, requiredLevel: 'guest' | 'player' | 'operator', operatorLevel?: number): Promise<boolean> {

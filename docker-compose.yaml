@@ -28,6 +28,16 @@ services:
       - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      # Match api-{customerId}.example.com for API
+      - "traefik.http.routers.api-${CUSTOMER_ID}.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)"
+      - "traefik.http.routers.api-${CUSTOMER_ID}.service=api-${CUSTOMER_ID}"
+      - "traefik.http.services.api-${CUSTOMER_ID}.loadbalancer.server.port=8081"
+      # Match app-{customerId}.example.com for APP
+      - "traefik.http.routers.app-${CUSTOMER_ID}.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)"
+      - "traefik.http.routers.app-${CUSTOMER_ID}.service=app-${CUSTOMER_ID}"
+      - "traefik.http.services.app-${CUSTOMER_ID}.loadbalancer.server.port=8082"
     volumes:
       - modules-data:/app/modules
     depends_on:

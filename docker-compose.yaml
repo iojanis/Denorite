@@ -17,9 +17,9 @@ services:
     environment:
       - DENO_KV_URL=${DENO_KV_URL}
       - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
-      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN}
-      - DENORITE_SECRET=${DENORITE_SECRET}
-      - JWT_SECRET=${JWT_SECRET}
+      - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
+      - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
+      - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     volumes:
       - modules-data:/app/modules
     depends_on:

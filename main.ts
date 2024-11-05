@@ -66,8 +66,8 @@ async function main() {
   await configManager.init(DEFAULT_CONFIG);
 
   // Load JWT secrets
-  const denoriteSecret = await loadOrGenerateJwtSecret("DENORITE_SECRET");
-  const jwtSecret = await loadOrGenerateJwtSecret("JWT_SECRET");
+  const denoriteSecret = await loadOrGenerateJwtSecret("DENORITE_SERVER_SECRET");
+  const jwtSecret = await loadOrGenerateJwtSecret("DENORITE_JWT_SECRET");
 
   const authService = new AuthService(configManager, kvManager, logger, jwtSecret, denoriteSecret);
 

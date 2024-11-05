@@ -23,8 +23,8 @@ export class ConfigManager {
 
     // Load configuration from environment variables
     for (const [key, value] of Object.entries(Deno.env.toObject())) {
-      if (key.startsWith('MC_')) {
-        const configKey = key.replace('MC_', '');
+      if (key.startsWith('DENORITE_')) {
+        const configKey = key.replace('DENORITE_', '');
         await this.set(configKey, value);
       }
     }

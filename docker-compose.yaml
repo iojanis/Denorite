@@ -18,8 +18,6 @@ services:
     restart: unless-stopped
     labels:
       - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
 
   server:
     container_name: server-${CUSTOMER_ID}
@@ -35,16 +33,13 @@ services:
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
     labels:
       - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
       # API Domain
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.entryPoints=http
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.middlewares=redirect-to-https
-      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)'
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.service=http-0-${CUSTOMER_ID}-server-api
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.entryPoints=https
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.middlewares=gzip
-      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)'
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.service=https-0-${CUSTOMER_ID}-server-api
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls.certresolver=letsencrypt
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls=true
@@ -53,11 +48,10 @@ services:
       # APP Domain
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.entryPoints=http
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.middlewares=redirect-to-https
-      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)'
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.service=http-1-${CUSTOMER_ID}-server-app
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.entryPoints=https
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.middlewares=gzip
-      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)'
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.service=https-1-${CUSTOMER_ID}-server-app
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls.certresolver=letsencrypt
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls=true

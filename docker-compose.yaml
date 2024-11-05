@@ -16,8 +16,6 @@ services:
           cpus: '0.25'
           memory: 256M
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
     networks:
       - customer-net
 
@@ -33,26 +31,8 @@ services:
       DENORITE_ALLOWED_ORIGIN: '${DENORITE_ALLOWED_ORIGIN}'
       DENORITE_SERVER_SECRET: '${DENORITE_SERVER_SECRET}'
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
-    labels:
-      - traefik.enable=true
-      # API
-      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.service=http-0-${CUSTOMER_ID}-server-api
-      - traefik.http.services.http-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
-      # APP
-      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.service=http-1-${CUSTOMER_ID}-server-app
-      - traefik.http.services.http-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
-      # HTTPS redirect and certs
-      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
-      - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.middlewares=redirect-to-https
-      - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.middlewares=redirect-to-https
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls.certresolver=letsencrypt
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls.certresolver=letsencrypt
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.entryPoints=https
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.entryPoints=https
-      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      COOLIFY_URL: 'https://app-${CUSTOMER_ID}.cou.ai:8082,https://api-${CUSTOMER_ID}.cou.ai:8081'
+      COOLIFY_FQDN: 'app-${CUSTOMER_ID}.cou.ai:8082,api-${CUSTOMER_ID}.cou.ai:8081'
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:

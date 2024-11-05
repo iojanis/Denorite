@@ -28,8 +28,8 @@ services:
       - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
-      - SERVICE_FQDN_API_8082     # This will create a domain for your API endpoint
-      - SERVICE_FQDN_PLAYERS_8081 # This will create a domain for your secondary endpoint
+      - COOLIFY_URL='https://${DENORITE_API_DOMAIN}:8082,https://${DENORITE_SECONDARY_DOMAIN}:8081'
+      - COOLIFY_FQDN='${DENORITE_API_DOMAIN}:8082,${DENORITE_SECONDARY_DOMAIN}:8081'
     volumes:
       - modules-data:/app/modules
     depends_on:

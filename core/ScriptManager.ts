@@ -67,11 +67,9 @@ export class ScriptManager {
   private async importModule(modulePath: string): Promise<any> {
     this.logger.debug(`Importing module from: ${modulePath}`);
     try {
-      // Normalize slashes and create proper file URL
-      const normalizedPath = modulePath.replace(/\/+/g, '/');
-      const fullPath = resolve(Deno.cwd(), normalizedPath);
-      const moduleUrl = `file://${fullPath}`;
-
+      // Get absolute path and ensure proper URL format
+      const absolutePath = resolve(this.basePath, modulePath);
+      const moduleUrl = new URL(`file://${absolutePath}`).href;
       return await import(moduleUrl);
     } catch (error: any) {
       this.logger.error(`Error importing module ${modulePath}: ${error.message}`);
@@ -80,7 +78,7 @@ export class ScriptManager {
   }
 
   async loadModules(): Promise<void> {
-    const enchantmentsDir = './enchantments';
+    const enchantmentsDir = resolve(this.basePath, '../enchantments');
     this.logger.info('Loading modules from ' + enchantmentsDir);
 
     for await (const entry of walk(enchantmentsDir, {
@@ -94,16 +92,22 @@ export class ScriptManager {
 
   public async loadModule(modulePath: string): Promise<void> {
     try {
-      // Normalize the path to prevent double slashes
-      const normalizedPath = modulePath.replace(/\/+/g, '/');
+      // If the path starts with /app, remove it to make it relative
+      const cleanPath = modulePath.replace(/^\/app\//, '');
 
-      // Add cache-busting query parameter to force reload
-      const moduleUrl = `file://${Deno.cwd()}/${normalizedPath}?t=${Date.now()}`;
+      // Get absolute path from the base directory
+      const absolutePath = resolve(this.basePath, '..', cleanPath);
 
-      const moduleImport = await import(moduleUrl);
-      await this.interpreter.loadModule(normalizedPath, moduleImport);
+      // Create proper file URL with cache busting
+      const moduleUrl = new URL(`file://${absolutePath}`);
+      moduleUrl.searchParams.set('t', Date.now().toString());
 
-      this.logger.debug(`Successfully loaded module from: ${moduleUrl}`);
+      this.logger.debug(`Attempting to load module from: ${moduleUrl.href}`);
+
+      const moduleImport = await import(moduleUrl.href);
+      await this.interpreter.loadModule(cleanPath, moduleImport);
+
+      this.logger.debug(`Successfully loaded module from: ${moduleUrl.href}`);
     } catch (error) {
       this.logger.error(`Error loading module ${modulePath}: ${error.message}`);
       throw error;

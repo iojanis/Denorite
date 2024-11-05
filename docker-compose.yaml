@@ -1,10 +1,10 @@
 services:
   kv:
-    container_name: denorite-kv-${CUSTOMER_ID}
+    container_name: denorite-kv
     image: ghcr.io/denoland/denokv:latest
     command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
     volumes:
-      - '/opt/coolify/customers/${CUSTOMER_ID}/kv:/data'
+      - kv-data:/data
     expose:
       - 4512
     deploy:
@@ -17,7 +17,7 @@ services:
           memory: 256M
 
   server:
-    container_name: denorite-srv-${CUSTOMER_ID}
+    container_name: denorite-srv
     build: .
     expose:
       - 8082
@@ -29,7 +29,7 @@ services:
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     volumes:
-      - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
+      - modules-data:/app/modules
     depends_on:
       - kv
     deploy:

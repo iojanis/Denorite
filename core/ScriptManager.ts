@@ -51,7 +51,7 @@ export class ScriptManager {
     this.moduleWatcher = new ModuleWatcher(
       this,
       this.logger,
-      '/enchantments'
+      resolve(this.basePath, '../enchantments')
     );
 
     // Initialize the interpreter with our context factory

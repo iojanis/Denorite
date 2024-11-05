@@ -4,7 +4,7 @@ services:
     image: ghcr.io/denoland/denokv:latest
     command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
     volumes:
-      - kv_data:/data
+      - /opt/coolify/customers/${CUSTOMER_ID}/kv:/data
     expose:
       - 4512
     deploy:
@@ -37,7 +37,7 @@ services:
       - "traefik.http.routers.app-${CUSTOMER_ID}.service=app-${CUSTOMER_ID}"
       - "traefik.http.services.app-${CUSTOMER_ID}.loadbalancer.server.port=8082"
     volumes:
-      - modules_data:/app/modules
+      - /opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules
     depends_on:
       - kv
     deploy:
@@ -48,15 +48,3 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
-volumes:
-  kv_data:
-    driver: local
-    driver_opts:
-      o: size=500m
-      type: ext4
-  modules_data:
-    driver: local
-    driver_opts:
-      o: size=500m
-      type: ext4

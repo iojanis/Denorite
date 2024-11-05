@@ -170,7 +170,8 @@ export class ScriptManager {
 
     const displayApi = createDisplayAPI(
       this.sendToMinecraft.bind(this),
-      this.logger.info.bind(this.logger)
+      this.logger.info.bind(this.logger),
+      this.kv.kv
     );
 
     return {

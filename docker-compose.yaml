@@ -7,8 +7,6 @@ services:
       - kv-data:/data
     expose:
       - 4512
-    labels:
-      - coolify.volume.kv-data.size=500m
     deploy:
       resources:
         limits:
@@ -24,16 +22,12 @@ services:
     expose:
       - 8082
       - 8081
-    labels:
-      - coolify.volume.modules-data.size=500m
     environment:
       - DENO_KV_URL=${DENO_KV_URL}
       - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
       - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
-      - COOLIFY_URL=https://${DENORITE_API_DOMAIN}:8082,https://${DENORITE_SECONDARY_DOMAIN}:8081
-      - COOLIFY_FQDN=${DENORITE_API_DOMAIN}:8082,${DENORITE_SECONDARY_DOMAIN}:8081
     volumes:
       - modules-data:/app/modules
     depends_on:

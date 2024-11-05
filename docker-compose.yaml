@@ -1,10 +1,10 @@
 services:
   kv:
-    container_name: denorite-kv-${CUSTOMER_ID}
-    image: ghcr.io/denoland/denokv:latest
-    command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
+    container_name: kv-${CUSTOMER_ID}
+    image: 'ghcr.io/denoland/denokv:latest'
+    command: '--sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}'
     volumes:
-      - /opt/coolify/customers/${CUSTOMER_ID}/kv:/data
+      - '/opt/coolify/customers/${CUSTOMER_ID}/kv:/data'
     expose:
       - 4512
     deploy:
@@ -15,29 +15,71 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
+    restart: unless-stopped
+    labels:
+      - coolify.managed=true
+      - coolify.version=4.0.0-beta.360
+      - coolify.applicationId=8
+      - coolify.type=application
+      - coolify.pullRequestId=0
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+    networks:
+      ak8cccws8gww8ocsws8c4088: null
+    environment:
+      COOLIFY_BRANCH: '"main"'
 
   server:
-    container_name: denorite-srv-${CUSTOMER_ID}
+    container_name: server-${CUSTOMER_ID}
     build: .
     expose:
       - 8082
       - 8081
     environment:
-      - DENO_KV_URL=http://denorite-kv-${CUSTOMER_ID}:4512
-      - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
-      - DENORITE_ALLOWED_ORIGIN=https://app-${CUSTOMER_ID}.cou.ai
-      - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
-      - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
+      DENO_KV_URL: 'http://kv-${CUSTOMER_ID}:4512'
+      DENO_KV_ACCESS_TOKEN: '${DENO_KV_ACCESS_TOKEN}'
+      DENORITE_ALLOWED_ORIGIN: 'https://app-${CUSTOMER_ID}.cou.ai'
+      DENORITE_SERVER_SECRET: '${DENORITE_SERVER_SECRET}'
+      DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
+      COOLIFY_BRANCH: '"main"'
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api-${CUSTOMER_ID}.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)"
-      - "traefik.http.routers.api-${CUSTOMER_ID}.service=api-${CUSTOMER_ID}"
-      - "traefik.http.services.api-${CUSTOMER_ID}.loadbalancer.server.port=8081"
-      - "traefik.http.routers.app-${CUSTOMER_ID}.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)"
-      - "traefik.http.routers.app-${CUSTOMER_ID}.service=app-${CUSTOMER_ID}"
-      - "traefik.http.services.app-${CUSTOMER_ID}.loadbalancer.server.port=8082"
+      - coolify.managed=true
+      - coolify.version=4.0.0-beta.360
+      - coolify.applicationId=8
+      - coolify.type=application
+      - coolify.pullRequestId=0
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      # API Domain
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.entryPoints=http
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.middlewares=redirect-to-https
+      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.service=http-0-${CUSTOMER_ID}-server-api
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.entryPoints=https
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.middlewares=gzip
+      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.service=https-0-${CUSTOMER_ID}-server-api
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls=true
+      - traefik.http.services.http-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
+      - traefik.http.services.https-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
+      # APP Domain
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.entryPoints=http
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.middlewares=redirect-to-https
+      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.service=http-1-${CUSTOMER_ID}-server-app
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.entryPoints=https
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.middlewares=gzip
+      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.service=https-1-${CUSTOMER_ID}-server-app
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls.certresolver=letsencrypt
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls=true
+      - traefik.http.services.http-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
+      - traefik.http.services.https-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
     volumes:
-      - /opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules
+      - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:
       - kv
     deploy:
@@ -48,3 +90,14 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
+    restart: unless-stopped
+    networks:
+      ak8cccws8gww8ocsws8c4088: null
+
+volumes: {}
+networks:
+  ak8cccws8gww8ocsws8c4088:
+    name: ak8cccws8gww8ocsws8c4088
+    external: true
+configs: {}
+secrets: {}

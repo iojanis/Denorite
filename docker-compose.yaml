@@ -7,6 +7,14 @@ services:
       - kv-data:/data
     expose:
       - 4512
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   server:
     container_name: denorite-srv
@@ -14,6 +22,16 @@ services:
     expose:
       - 8082
       - 8081
+    labels:
+      - traefik.enable=true
+      # Main API endpoint
+      - traefik.http.routers.denorite-api.rule=Host(`${DENORITE_API_DOMAIN}`)
+      - traefik.http.routers.denorite-api.entryPoints=https
+      - traefik.http.services.denorite-api.loadbalancer.server.port=8082
+      # Secondary endpoint
+      - traefik.http.routers.denorite-secondary.rule=Host(`${DENORITE_SECONDARY_DOMAIN}`)
+      - traefik.http.routers.denorite-secondary.entryPoints=https
+      - traefik.http.services.denorite-secondary.loadbalancer.server.port=8081
     environment:
       - DENO_KV_URL=${DENO_KV_URL}
       - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
@@ -24,28 +42,23 @@ services:
       - modules-data:/app/modules
     depends_on:
       - kv
-#  runner:
-#    container_name: denorite-run
-#    build: .
-#    expose:
-#      - ${RUNNER_MINECRAFT_WS_PORT}
-#      - ${RUNNER_PLAYER_WS_PORT}
-#    environment:
-#      - RUNNER=true
-#      - MINECRAFT_WS_PORT=${RUNNER_MINECRAFT_WS_PORT}
-#      - PLAYER_WS_PORT=${RUNNER_PLAYER_WS_PORT}
-#      - DENO_KV_URL=${DENO_KV_URL}
-#      - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
-#      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN}
-#      - DENORITE_SECRET=${DENORITE_SECRET}
-#      - JWT_SECRET=${JWT_SECRET}
-#    volumes:
-#      - runner-modules-data:/app/modules
-#    depends_on:
-#      - kv
-#      - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
 volumes:
   kv-data:
+    driver: local
+    driver_opts:
+      o: size=500m
+      type: ext4
   modules-data:
-  runner-modules-data:
+    driver: local
+    driver_opts:
+      o: size=500m
+      type: ext4

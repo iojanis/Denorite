@@ -1,4 +1,4 @@
-import { Module, Command, Description, Permission } from '../decorators.ts';
+import { Module, Command, Description, Permission, Event } from '../decorators.ts';
 import { ScriptContext } from '../types.ts';
 
 @Module({
@@ -6,25 +6,129 @@ import { ScriptContext } from '../types.ts';
   version: '1.0.0'
 })
 export class ChunkGenTeleport {
-  private readonly TELEPORT_DELAY = 6000; // 3 seconds
+  private readonly TELEPORT_DELAY = 3000; // 3 seconds
   private readonly SPACING = 128; // Distance between teleports (8 chunks)
   private readonly CENTER_X = 15360; // (30719 / 2)
   private readonly CENTER_Z = 7999;  // (15997 / 2)
-  private activeGenerators: Map<string, boolean> = new Map();
+  private activeGenerators: Map<string, { active: boolean; step: number; y: number }> = new Map();
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private calculateSpiralOffset(step: number): { x: number, z: number } {
-    // Calculate spiral position using parametric equations
-    const angle = 0.5 * step;
-    const radius = this.SPACING * (angle / (2 * Math.PI));
+  private getSquareSpiral(step: number): { x: number, z: number } {
+    // Convert step number to square spiral coordinates
+    let x = 0;
+    let z = 0;
+    let layer = 0;
+
+    if (step > 0) {
+      layer = Math.floor((Math.sqrt(step + 1) - 1) / 2) + 1;
+      let position = step - (4 * layer * layer - 4 * layer);
+      let side = position / (2 * layer);
+
+      switch (Math.floor(side)) {
+        case 0: // right side
+          x = layer;
+          z = position - layer;
+          break;
+        case 1: // top side
+          x = layer - (position - 2 * layer);
+          z = layer;
+          break;
+        case 2: // left side
+          x = -layer;
+          z = layer - (position - 4 * layer);
+          break;
+        case 3: // bottom side
+          x = -layer + (position - 6 * layer);
+          z = -layer;
+          break;
+      }
+    }
 
     return {
-      x: this.CENTER_X + Math.floor(radius * Math.cos(angle)),
-      z: this.CENTER_Z + Math.floor(radius * Math.sin(angle))
+      x: this.CENTER_X + (x * this.SPACING),
+      z: this.CENTER_Z + (z * this.SPACING)
     };
+  }
+
+  @Event('player_joined')
+  async handlePlayerJoined({ params, log, kv }: ScriptContext): Promise<void> {
+    const { playerId, playerName } = params;
+
+    try {
+      // Check if player was running generation before
+      const savedState = await kv.get<{ step: number; y: number }>(['chunkgen', playerName]);
+
+      if (savedState.value) {
+        log(`Restoring chunk generation state for ${playerName}`);
+        this.activeGenerators.set(playerName, {
+          active: true,
+          step: savedState.value.step,
+          y: savedState.value.y
+        });
+
+        // Resume generation
+        this.resumeGeneration({ sender: playerName, api: params.api, log });
+      }
+    } catch (error) {
+      log(`Error handling player join for ${playerName}: ${error}`);
+    }
+  }
+
+  @Event('player_left')
+  async handlePlayerLeft({ params, log, kv }: ScriptContext): Promise<void> {
+    const { playerName } = params;
+
+    try {
+      const genState = this.activeGenerators.get(playerName);
+      if (genState?.active) {
+        // Save current generation state
+        await kv.set(['chunkgen', playerName], {
+          step: genState.step,
+          y: genState.y
+        });
+        log(`Saved generation state for ${playerName} at step ${genState.step}`);
+      }
+    } catch (error) {
+      log(`Error handling player leave for ${playerName}: ${error}`);
+    }
+  }
+
+  private async resumeGeneration({ sender, api, log }: { sender: string, api: any, log: (msg: string) => void }): Promise<void> {
+    const state = this.activeGenerators.get(sender);
+    if (!state?.active) return;
+
+    try {
+      await api.executeCommand(
+        `tellraw ${sender} {"text":"Resuming chunk generation from step ${state.step}...","color":"green"}`
+      );
+
+      while (this.activeGenerators.get(sender)?.active) {
+        const pos = this.getSquareSpiral(state.step);
+
+        // Teleport player using saved Y coordinate
+        await api.teleport(sender, pos.x, state.y, pos.z);
+
+        // Log progress every 100 steps
+        if (state.step % 100 === 0) {
+          log(`Generation progress - Step: ${state.step}, Position: ${pos.x}, ${pos.z}`);
+          await api.executeCommand(
+            `tellraw ${sender} {"text":"Generated position: ${pos.x}, ${pos.z}","color":"gray"}`
+          );
+        }
+
+        await this.sleep(this.TELEPORT_DELAY);
+        state.step++;
+      }
+    } catch (error) {
+      log(`Error resuming generation for ${sender}: ${error}`);
+      this.activeGenerators.delete(sender);
+      await api.executeCommand(
+        `tellraw ${sender} {"text":"Error during chunk generation: ${error.message}","color":"red"}`
+      );
+    }
   }
 
   @Command(['gen', 'start'])
@@ -33,7 +137,7 @@ export class ChunkGenTeleport {
   async startGeneration({ params, api, log }: ScriptContext): Promise<void> {
     const { sender } = params;
 
-    if (this.activeGenerators.get(sender)) {
+    if (this.activeGenerators.get(sender)?.active) {
       await api.executeCommand(
         `tellraw ${sender} {"text":"Chunk generation is already running!","color":"red"}`
       );
@@ -41,34 +145,26 @@ export class ChunkGenTeleport {
     }
 
     try {
-      // First teleport to actual map center
-      await api.teleport(sender, this.CENTER_X, '~', this.CENTER_Z);
+      // Get current Y position before moving to center
+      const playerPos = await api.executeCommand(`data get entity ${sender} Pos`);
+      const positionData = JSON.parse(playerPos.result);
+      const playerY = Math.floor(positionData[1]);
+
+      // First teleport to map center
+      await api.teleport(sender, this.CENTER_X, playerY, this.CENTER_Z);
       await this.sleep(this.TELEPORT_DELAY);
 
-      this.activeGenerators.set(sender, true);
+      this.activeGenerators.set(sender, {
+        active: true,
+        step: 0,
+        y: playerY
+      });
+
       await api.executeCommand(
         `tellraw ${sender} {"text":"Starting chunk generation from map center. Use /gen stop to stop.","color":"green"}`
       );
 
-      let step = 0;
-
-      while (this.activeGenerators.get(sender)) {
-        const pos = this.calculateSpiralOffset(step);
-
-        // Teleport player using absolute coordinates from true center
-        await api.teleport(sender, pos.x, '~', pos.z);
-
-        // Log progress every 100 steps
-        if (step % 100 === 0) {
-          log(`Generation progress - Step: ${step}, Position: ${pos.x}, ${pos.z}`);
-          await api.executeCommand(
-            `tellraw ${sender} {"text":"Generated position: ${pos.x}, ${pos.z}","color":"gray"}`
-          );
-        }
-
-        await this.sleep(this.TELEPORT_DELAY);
-        step++;
-      }
+      await this.resumeGeneration({ sender, api, log });
 
     } catch (error) {
       log(`Error in chunk generation for ${sender}: ${error}`);
@@ -82,11 +178,15 @@ export class ChunkGenTeleport {
   @Command(['gen', 'stop'])
   @Description('Stop continuous chunk generation teleport')
   @Permission('operator')
-  async stopGeneration({ params, api }: ScriptContext): Promise<void> {
+  async stopGeneration({ params, api, kv }: ScriptContext): Promise<void> {
     const { sender } = params;
 
-    if (this.activeGenerators.get(sender)) {
+    const state = this.activeGenerators.get(sender);
+    if (state?.active) {
+      state.active = false;
       this.activeGenerators.delete(sender);
+      // Clean up saved state
+      await kv.delete(['chunkgen', sender]);
       await api.executeCommand(
         `tellraw ${sender} {"text":"Stopping chunk generation.","color":"green"}`
       );
@@ -103,9 +203,12 @@ export class ChunkGenTeleport {
   async generationStatus({ params, api }: ScriptContext): Promise<void> {
     const { sender } = params;
 
-    const isActive = this.activeGenerators.get(sender);
+    const state = this.activeGenerators.get(sender);
+    const isActive = state?.active ?? false;
+    const stepInfo = state ? ` (Step: ${state.step})` : '';
+
     await api.executeCommand(
-      `tellraw ${sender} {"text":"Chunk generation is currently ${isActive ? 'active' : 'inactive'}","color":"${isActive ? 'green' : 'red'}"}`
+      `tellraw ${sender} {"text":"Chunk generation is currently ${isActive ? 'active' : 'inactive'}${stepInfo}","color":"${isActive ? 'green' : 'red'}"}`
     );
   }
 }

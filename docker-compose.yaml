@@ -18,6 +18,8 @@ services:
     restart: unless-stopped
     labels:
       - traefik.enable=true
+    networks:
+      - customer-net
 
   server:
     container_name: server-${CUSTOMER_ID}
@@ -66,5 +68,9 @@ services:
           cpus: '0.5'
           memory: 512M
     restart: unless-stopped
+    networks:
+      - customer-net
 
-volumes: {}
+networks:
+  customer-net:
+    driver: bridge

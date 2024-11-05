@@ -1,10 +1,10 @@
 services:
   kv:
-    container_name: denorite-kv
+    container_name: denorite-kv-${CUSTOMER_ID}    # Added customer ID
     image: ghcr.io/denoland/denokv:latest
     command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
     volumes:
-      - kv-data:/data
+      - kv-data-${CUSTOMER_ID}:/data    # Made volume name unique
     expose:
       - 4512
     deploy:
@@ -17,29 +17,29 @@ services:
           memory: 256M
 
   server:
-    container_name: denorite-srv
+    container_name: denorite-srv-${CUSTOMER_ID}    # Added customer ID
     build: .
     expose:
       - 8082
       - 8081
     environment:
-      - DENO_KV_URL=${DENO_KV_URL}
+      - DENO_KV_URL=http://denorite-kv-${CUSTOMER_ID}:4512    # Updated to use customer-specific KV container
       - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
-      - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
+      - DENORITE_ALLOWED_ORIGIN=https://app-${CUSTOMER_ID}.example.com    # Updated for customer domain
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     labels:
       - "traefik.enable=true"
       # Match api-{customerId}.example.com for API
-      - "traefik.http.routers.api-${CUSTOMER_ID}.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)"
+      - "traefik.http.routers.api-${CUSTOMER_ID}.rule=Host(`api-${CUSTOMER_ID}.example.com`)"
       - "traefik.http.routers.api-${CUSTOMER_ID}.service=api-${CUSTOMER_ID}"
       - "traefik.http.services.api-${CUSTOMER_ID}.loadbalancer.server.port=8081"
       # Match app-{customerId}.example.com for APP
-      - "traefik.http.routers.app-${CUSTOMER_ID}.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)"
+      - "traefik.http.routers.app-${CUSTOMER_ID}.rule=Host(`app-${CUSTOMER_ID}.example.com`)"
       - "traefik.http.routers.app-${CUSTOMER_ID}.service=app-${CUSTOMER_ID}"
       - "traefik.http.services.app-${CUSTOMER_ID}.loadbalancer.server.port=8082"
     volumes:
-      - modules-data:/app/modules
+      - modules-data-${CUSTOMER_ID}:/app/modules    # Made volume name unique
     depends_on:
       - kv
     deploy:
@@ -52,12 +52,12 @@ services:
           memory: 512M
 
 volumes:
-  kv-data:
+  kv-data-${CUSTOMER_ID}:    # Made volume name unique
     driver: local
     driver_opts:
       o: size=500m
       type: ext4
-  modules-data:
+  modules-data-${CUSTOMER_ID}:    # Made volume name unique
     driver: local
     driver_opts:
       o: size=500m

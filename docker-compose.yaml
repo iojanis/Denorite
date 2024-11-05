@@ -33,7 +33,7 @@ services:
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
     labels:
       - traefik.enable=true
-      # API Domain
+      # API Domain (WebSocket on 8081)
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.entryPoints=http
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.middlewares=redirect-to-https
       - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)'
@@ -45,7 +45,11 @@ services:
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.tls=true
       - traefik.http.services.http-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
       - traefik.http.services.https-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
-      # APP Domain
+      # Enable WebSocket for API
+      - traefik.http.middlewares.ws-api.headers.customrequestheaders.Connection=Upgrade
+      - traefik.http.middlewares.ws-api.headers.customrequestheaders.Upgrade=websocket
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.middlewares=ws-api
+      # APP Domain (WebSocket on 8082)
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.entryPoints=http
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.middlewares=redirect-to-https
       - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)'
@@ -57,6 +61,10 @@ services:
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls=true
       - traefik.http.services.http-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
       - traefik.http.services.https-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
+      # Enable WebSocket for APP
+      - traefik.http.middlewares.ws-app.headers.customrequestheaders.Connection=Upgrade
+      - traefik.http.middlewares.ws-app.headers.customrequestheaders.Upgrade=websocket
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.middlewares=ws-app
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:

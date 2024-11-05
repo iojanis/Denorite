@@ -35,14 +35,12 @@ services:
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
     labels:
       - traefik.enable=true
-      - traefik.http.middlewares.strip.stripprefix.prefixes=/ws
-      - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
       # API
-      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)'
+      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
       - traefik.http.routers.http-0-${CUSTOMER_ID}-server-api.service=http-0-${CUSTOMER_ID}-server-api
       - traefik.http.services.http-0-${CUSTOMER_ID}-server-api.loadbalancer.server.port=8081
       # APP
-      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)'
+      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
       - traefik.http.routers.http-1-${CUSTOMER_ID}-server-app.service=http-1-${CUSTOMER_ID}-server-app
       - traefik.http.services.http-1-${CUSTOMER_ID}-server-app.loadbalancer.server.port=8082
       # HTTPS redirect and certs
@@ -53,8 +51,8 @@ services:
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.tls.certresolver=letsencrypt
       - traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.entryPoints=https
       - traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.entryPoints=https
-      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`)'
-      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`)'
+      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server-api.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server-app.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:

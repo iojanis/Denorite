@@ -17,18 +17,9 @@ services:
           memory: 256M
     restart: unless-stopped
     labels:
-      - coolify.managed=true
-      - coolify.version=4.0.0-beta.360
-      - coolify.applicationId=8
-      - coolify.type=application
-      - coolify.pullRequestId=0
       - traefik.enable=true
       - traefik.http.middlewares.gzip.compress=true
       - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
-    networks:
-      ak8cccws8gww8ocsws8c4088: null
-    environment:
-      COOLIFY_BRANCH: '"main"'
 
   server:
     container_name: server-${CUSTOMER_ID}
@@ -42,13 +33,7 @@ services:
       DENORITE_ALLOWED_ORIGIN: '${DENORITE_ALLOWED_ORIGIN}'
       DENORITE_SERVER_SECRET: '${DENORITE_SERVER_SECRET}'
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
-      COOLIFY_BRANCH: '"main"'
     labels:
-      - coolify.managed=true
-      - coolify.version=4.0.0-beta.360
-      - coolify.applicationId=8
-      - coolify.type=application
-      - coolify.pullRequestId=0
       - traefik.enable=true
       - traefik.http.middlewares.gzip.compress=true
       - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
@@ -91,13 +76,5 @@ services:
           cpus: '0.5'
           memory: 512M
     restart: unless-stopped
-    networks:
-      ak8cccws8gww8ocsws8c4088: null
 
 volumes: {}
-networks:
-  ak8cccws8gww8ocsws8c4088:
-    name: ak8cccws8gww8ocsws8c4088
-    external: true
-configs: {}
-secrets: {}

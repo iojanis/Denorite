@@ -20,8 +20,6 @@ interface CommandMetadata {
   subcommands?: any[];
 }
 
-const isCompiled = Deno.args.includes("--compiled");
-
 export class ScriptManager {
   private interpreter: ScriptInterpreter;
   private config: ConfigManager;
@@ -69,8 +67,11 @@ export class ScriptManager {
   private async importModule(modulePath: string): Promise<any> {
     this.logger.debug(`Importing module from: ${modulePath}`);
     try {
-      const fullPath = resolve(this.basePath, modulePath);
+      // Normalize slashes and create proper file URL
+      const normalizedPath = modulePath.replace(/\/+/g, '/');
+      const fullPath = resolve(Deno.cwd(), normalizedPath);
       const moduleUrl = `file://${fullPath}`;
+
       return await import(moduleUrl);
     } catch (error: any) {
       this.logger.error(`Error importing module ${modulePath}: ${error.message}`);
@@ -81,20 +82,28 @@ export class ScriptManager {
   async loadModules(): Promise<void> {
     const enchantmentsDir = './enchantments';
     this.logger.info('Loading modules from ' + enchantmentsDir);
-    for await (const entry of walk(enchantmentsDir, { maxDepth: 1, includeDirs: false })) {
-      if (entry.name.endsWith('.ts')) {
-        await this.loadModule(entry.path);
-      }
+
+    for await (const entry of walk(enchantmentsDir, {
+      maxDepth: 1,
+      includeDirs: false,
+      match: [/\.ts$/]
+    })) {
+      await this.loadModule(entry.path);
     }
   }
 
   public async loadModule(modulePath: string): Promise<void> {
     try {
-      const moduleImport = !isCompiled
-        ? await import(`file://${Deno.cwd()}/${modulePath}?=${Date.now()}`)  // Add cache-busting
-        : await this.importModule(modulePath);
+      // Normalize the path to prevent double slashes
+      const normalizedPath = modulePath.replace(/\/+/g, '/');
 
-      await this.interpreter.loadModule(modulePath, moduleImport);
+      // Add cache-busting query parameter to force reload
+      const moduleUrl = `file://${Deno.cwd()}/${normalizedPath}?t=${Date.now()}`;
+
+      const moduleImport = await import(moduleUrl);
+      await this.interpreter.loadModule(normalizedPath, moduleImport);
+
+      this.logger.debug(`Successfully loaded module from: ${moduleUrl}`);
     } catch (error) {
       this.logger.error(`Error loading module ${modulePath}: ${error.message}`);
       throw error;

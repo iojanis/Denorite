@@ -26,9 +26,10 @@ export class ModuleWatcher {
               await new Promise(resolve => setTimeout(resolve, 100));
 
               try {
-                // Reload the specific module
-                await this.scriptManager.loadModule(path);
-                this.logger.info(`Reloaded module: ${path}`);
+                // Normalize the path for consistency
+                const normalizedPath = path.replace(/\/+/g, '/');
+                await this.scriptManager.loadModule(normalizedPath);
+                this.logger.info(`Reloaded module: ${normalizedPath}`);
               } catch (error) {
                 this.logger.error(`Failed to reload module ${path}: ${error}`);
               }

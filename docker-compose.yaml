@@ -28,8 +28,6 @@ services:
       - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
-      - SERVICE_FQDN_API_8081
-      - SERVICE_FQDN_DENORITE_8082
     volumes:
       - modules-data:/app/modules
     depends_on:

@@ -1,8 +1,8 @@
 services:
   kv:
-    container_name: kv-${CUSTOMER_ID}
-    image: 'ghcr.io/denoland/denokv:latest'
-    command: '--sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}'
+    container_name: denorite-kv-${CUSTOMER_ID}
+    image: ghcr.io/denoland/denokv:latest
+    command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/kv:/data'
     expose:
@@ -15,55 +15,19 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    restart: unless-stopped
-    labels:
-      - traefik.enable=true
-    networks:
-      - customer-net
 
   server:
-    container_name: server-${CUSTOMER_ID}
+    container_name: denorite-srv-${CUSTOMER_ID}
     build: .
     expose:
       - 8082
       - 8081
     environment:
-      DENO_KV_URL: 'http://kv-${CUSTOMER_ID}:4512'
-      DENO_KV_ACCESS_TOKEN: '${DENO_KV_ACCESS_TOKEN}'
-      DENORITE_ALLOWED_ORIGIN: '${DENORITE_ALLOWED_ORIGIN}'
-      DENORITE_SERVER_SECRET: '${DENORITE_SERVER_SECRET}'
-      DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
-      # HTTP routes
-      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.entryPoints=http
-      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.middlewares=redirect-to-https
-      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.service=http-0-${CUSTOMER_ID}-server
-      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.entryPoints=http
-      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.middlewares=redirect-to-https
-      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.service=http-1-${CUSTOMER_ID}-server
-      # HTTPS routes
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.entryPoints=https
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.middlewares=gzip
-      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.service=https-0-${CUSTOMER_ID}-server
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.tls.certresolver=letsencrypt
-      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.tls=true
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.entryPoints=https
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.middlewares=gzip
-      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.service=https-1-${CUSTOMER_ID}-server
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.tls.certresolver=letsencrypt
-      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.tls=true
-      # Services
-      - traefik.http.services.http-0-${CUSTOMER_ID}-server.loadbalancer.server.port=8082
-      - traefik.http.services.http-1-${CUSTOMER_ID}-server.loadbalancer.server.port=8081
-      - traefik.http.services.https-0-${CUSTOMER_ID}-server.loadbalancer.server.port=8082
-      - traefik.http.services.https-1-${CUSTOMER_ID}-server.loadbalancer.server.port=8081
+      - DENO_KV_URL=${DENO_KV_URL}
+      - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}
+      - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
+      - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
+      - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:
@@ -76,10 +40,3 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    restart: unless-stopped
-    networks:
-      - customer-net
-
-networks:
-  customer-net:
-    driver: bridge

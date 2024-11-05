@@ -7,6 +7,8 @@ services:
       - kv-data:/data
     expose:
       - 4512
+    labels:
+      - coolify.volume.kv-data.size=500m
     deploy:
       resources:
         limits:
@@ -22,6 +24,8 @@ services:
     expose:
       - 8082
       - 8081
+    labels:
+      - coolify.volume.modules-data.size=500m
     environment:
       - DENO_KV_URL=${DENO_KV_URL}
       - DENO_KV_ACCESS_TOKEN=${DENO_KV_ACCESS_TOKEN}

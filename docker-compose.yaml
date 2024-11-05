@@ -16,6 +16,8 @@ services:
           cpus: '0.25'
           memory: 256M
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
     networks:
       - customer-net
 
@@ -31,8 +33,37 @@ services:
       DENORITE_ALLOWED_ORIGIN: '${DENORITE_ALLOWED_ORIGIN}'
       DENORITE_SERVER_SECRET: '${DENORITE_SERVER_SECRET}'
       DENORITE_JWT_SECRET: '${DENORITE_JWT_SECRET}'
-      COOLIFY_URL: 'https://app-${CUSTOMER_ID}.cou.ai:8082,https://api-${CUSTOMER_ID}.cou.ai:8081'
-      COOLIFY_FQDN: 'app-${CUSTOMER_ID}.cou.ai:8082,api-${CUSTOMER_ID}.cou.ai:8081'
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      # HTTP routes
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.entryPoints=http
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.middlewares=redirect-to-https
+      - 'traefik.http.routers.http-0-${CUSTOMER_ID}-server.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.http-0-${CUSTOMER_ID}-server.service=http-0-${CUSTOMER_ID}-server
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.entryPoints=http
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.middlewares=redirect-to-https
+      - 'traefik.http.routers.http-1-${CUSTOMER_ID}-server.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.http-1-${CUSTOMER_ID}-server.service=http-1-${CUSTOMER_ID}-server
+      # HTTPS routes
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.entryPoints=https
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.middlewares=gzip
+      - 'traefik.http.routers.https-0-${CUSTOMER_ID}-server.rule=Host(`app-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.service=https-0-${CUSTOMER_ID}-server
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.tls.certresolver=letsencrypt
+      - traefik.http.routers.https-0-${CUSTOMER_ID}-server.tls=true
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.entryPoints=https
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.middlewares=gzip
+      - 'traefik.http.routers.https-1-${CUSTOMER_ID}-server.rule=Host(`api-${CUSTOMER_ID}.cou.ai`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.service=https-1-${CUSTOMER_ID}-server
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.tls.certresolver=letsencrypt
+      - traefik.http.routers.https-1-${CUSTOMER_ID}-server.tls=true
+      # Services
+      - traefik.http.services.http-0-${CUSTOMER_ID}-server.loadbalancer.server.port=8082
+      - traefik.http.services.http-1-${CUSTOMER_ID}-server.loadbalancer.server.port=8081
+      - traefik.http.services.https-0-${CUSTOMER_ID}-server.loadbalancer.server.port=8082
+      - traefik.http.services.https-1-${CUSTOMER_ID}-server.loadbalancer.server.port=8081
     volumes:
       - '/opt/coolify/customers/${CUSTOMER_ID}/modules:/app/modules'
     depends_on:

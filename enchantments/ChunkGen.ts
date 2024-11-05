@@ -10,7 +10,7 @@ export class ChunkGenTeleport {
   private readonly SPACING = 128; // Distance between teleports (8 chunks)
   private readonly CENTER_X = 15360; // (30719 / 2)
   private readonly CENTER_Z = 7999;  // (15997 / 2)
-  private activeGenerators: Map<string, { active: boolean; step: number; y: number }> = new Map();
+  private activeGenerators: Map<string, { active: boolean; step: number }> = new Map();
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -54,23 +54,28 @@ export class ChunkGenTeleport {
   }
 
   @Event('player_joined')
-  async handlePlayerJoined({ params, log, kv }: ScriptContext): Promise<void> {
-    const { playerId, playerName } = params;
+  async handlePlayerJoined({ params, log, kv, api }: ScriptContext): Promise<void> {
+    const { playerName } = params;
 
     try {
       // Check if player was running generation before
-      const savedState = await kv.get<{ step: number; y: number }>(['chunkgen', playerName]);
+      const savedState = await kv.get<{ step: number }>(['chunkgen', playerName]);
 
       if (savedState.value) {
         log(`Restoring chunk generation state for ${playerName}`);
         this.activeGenerators.set(playerName, {
           active: true,
-          step: savedState.value.step,
-          y: savedState.value.y
+          step: savedState.value.step
         });
 
-        // Resume generation
-        this.resumeGeneration({ sender: playerName, api: params.api, log });
+        await api.executeCommand(
+          `tellraw ${playerName} {"text":"Resuming chunk generation...","color":"green"}`
+        );
+
+        // Resume generation after a short delay to ensure player is loaded
+        setTimeout(() => {
+          this.resumeGeneration({ sender: playerName, api, log });
+        }, 5000);
       }
     } catch (error) {
       log(`Error handling player join for ${playerName}: ${error}`);
@@ -86,8 +91,7 @@ export class ChunkGenTeleport {
       if (genState?.active) {
         // Save current generation state
         await kv.set(['chunkgen', playerName], {
-          step: genState.step,
-          y: genState.y
+          step: genState.step
         });
         log(`Saved generation state for ${playerName} at step ${genState.step}`);
       }
@@ -101,15 +105,11 @@ export class ChunkGenTeleport {
     if (!state?.active) return;
 
     try {
-      await api.executeCommand(
-        `tellraw ${sender} {"text":"Resuming chunk generation from step ${state.step}...","color":"green"}`
-      );
-
       while (this.activeGenerators.get(sender)?.active) {
         const pos = this.getSquareSpiral(state.step);
 
-        // Teleport player using saved Y coordinate
-        await api.teleport(sender, pos.x, state.y, pos.z);
+        // Teleport player keeping their current Y position
+        await api.teleport(sender, pos.x, '~', pos.z);
 
         // Log progress every 100 steps
         if (state.step % 100 === 0) {
@@ -126,7 +126,7 @@ export class ChunkGenTeleport {
       log(`Error resuming generation for ${sender}: ${error}`);
       this.activeGenerators.delete(sender);
       await api.executeCommand(
-        `tellraw ${sender} {"text":"Error during chunk generation: ${error.message}","color":"red"}`
+        `tellraw ${sender} {"text":"Error during chunk generation: ${error}","color":"red"}`
       );
     }
   }
@@ -145,19 +145,13 @@ export class ChunkGenTeleport {
     }
 
     try {
-      // Get current Y position before moving to center
-      const playerPos = await api.executeCommand(`data get entity ${sender} Pos`);
-      const positionData = JSON.parse(playerPos.result);
-      const playerY = Math.floor(positionData[1]);
-
-      // First teleport to map center
-      await api.teleport(sender, this.CENTER_X, playerY, this.CENTER_Z);
+      // First teleport to map center, keeping Y position
+      await api.teleport(sender, this.CENTER_X, '~', this.CENTER_Z);
       await this.sleep(this.TELEPORT_DELAY);
 
       this.activeGenerators.set(sender, {
         active: true,
-        step: 0,
-        y: playerY
+        step: 0
       });
 
       await api.executeCommand(
@@ -170,7 +164,7 @@ export class ChunkGenTeleport {
       log(`Error in chunk generation for ${sender}: ${error}`);
       this.activeGenerators.delete(sender);
       await api.executeCommand(
-        `tellraw ${sender} {"text":"Error during chunk generation: ${error.message}","color":"red"}`
+        `tellraw ${sender} {"text":"Error during chunk generation: ${error}","color":"red"}`
       );
     }
   }
@@ -208,7 +202,7 @@ export class ChunkGenTeleport {
     const stepInfo = state ? ` (Step: ${state.step})` : '';
 
     await api.executeCommand(
-      `tellraw ${sender} {"text":"Chunk generation is currently ${isActive ? 'active' : 'inactive'}${stepInfo}","color":"${isActive ? 'green' : 'red'}"}`
+      `tellraw ${sender} {"text":"Chunk generation is currently ${isActive ? 'active' : 'inactive'}${stepInfo}","color":"green"}`
     );
   }
 }

@@ -105,10 +105,27 @@ export class SocketManager {
   private handleMinecraftWebSocket(req: Request): Response {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
-    this.scriptManager.addMinecraftSocket(socket);
+    // Generate a unique ID for this connection
+    const connectionId = crypto.randomUUID();
 
-    socket.onopen = () => {
+    socket.onopen = async () => {
       this.logger.debug("New Denorite WebSocket connection established");
+
+      // Add socket to script manager before emitting event
+      this.scriptManager.addMinecraftSocket(socket);
+
+      // Emit connection event that can be handled by any module listening for "denorite_connected"
+      await this.scriptManager.handleEvent("denorite_connected", {
+        connectionId,
+        timestamp: Date.now(),
+        type: "minecraft",
+        address: req.headers.get("X-Forwarded-For") || "unknown",
+        status: "connected",
+        metadata: {
+          userAgent: req.headers.get("User-Agent"),
+          protocol: req.headers.get("Sec-WebSocket-Protocol"),
+        }
+      });
     };
 
     socket.onmessage = async (event) => {
@@ -119,8 +136,21 @@ export class SocketManager {
       }
     };
 
-    socket.onclose = () => {
+    socket.onclose = async (event) => {
       this.logger.info("Denorite WebSocket connection closed");
+
+      // Emit disconnection event before removing socket
+      await this.scriptManager.handleEvent("denorite_disconnected", {
+        connectionId,
+        timestamp: Date.now(),
+        type: "minecraft",
+        status: "disconnected",
+        code: event.code,
+        reason: event.reason || "connection_closed",
+        wasClean: event.wasClean
+      });
+
+      // Remove socket from script manager
       this.scriptManager.removeMinecraftSocket(socket);
     };
 
@@ -254,27 +284,41 @@ export class SocketManager {
     return response;
   }
 
-  sendServerInfo(socket, permission) {
-    const serverName = "COU.AI"
-    const serverDescription = "The Official: Craft Operations Unit Server."
-    const serverUrl = "cou.ai"
-    const minecraftVersion = "1.20.4"
-    const commands = this.scriptManager.getCommandsByPermission(permission)
-    const extras = {
-      apps: [
+  async sendServerInfo(socket: WebSocket, permission: 'guest' | 'player' | 'operator') {
+    try {
+      // Load server info from KV store
+      const serverName = await this.scriptManager.kv.get(['server', 'name']) || 'COU.AI';
+      const serverDescription = await this.scriptManager.kv.get(['server', 'description']) || 'The Official: Craft Operations Unit Server.';
+      const serverUrl = await this.scriptManager.kv.get(['server', 'url']) || 'cou.ai';
+      const minecraftVersion = await this.scriptManager.kv.get(['server', 'minecraft_version']) || '1.20.4';
 
-      ]
+      // Load apps configuration from KV
+      const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
+
+      // Get available commands based on permission level
+      const commands = this.scriptManager.getCommandsByPermission(permission);
+
+      // Send the server info to the client
+      socket.send(JSON.stringify({
+        type: 'server_info',
+        success: true,
+        serverName,
+        serverDescription,
+        serverUrl,
+        minecraftVersion,
+        commands,
+        extras: {
+          apps
+        }
+      }));
+    } catch (error: any) {
+      this.logger.error(`Error sending server info: ${error.message}`);
+      socket.send(JSON.stringify({
+        type: 'server_info',
+        success: false,
+        error: 'Failed to load server information'
+      }));
     }
-    socket.send(JSON.stringify({
-      type: 'server_info',
-      success: true,
-      serverName,
-      serverDescription,
-      serverUrl,
-      minecraftVersion,
-      commands,
-      ...extras
-    }));
   }
 
   private async handleWebSocketMessage(message: string, socket: WebSocket, type: 'minecraft' | 'runner') {

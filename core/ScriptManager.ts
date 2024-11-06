@@ -162,6 +162,51 @@ export class ScriptManager {
     }
   }
 
+  private async messagePlayer(playerId: string, message: string, options: {
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underlined?: boolean;
+    sound?: string;
+  } = {}): Promise<void> {
+    // Default styling
+    const {
+      color = 'white',
+      bold = false,
+      italic = false,
+      underlined = false,
+      sound = 'entity.experience_orb.pickup'
+    } = options;
+
+    // Send socket message
+    this.sendToPlayer(playerId, {
+      type: 'chat_message',
+      message,
+      timestamp: Date.now(),
+      metadata: {
+        color,
+        bold,
+        italic,
+        underlined
+      }
+    });
+
+    // Send Minecraft tellraw
+    const tellrawCommand = `tellraw ${playerId} {"text":"${message}","color":"${color}"${
+      bold ? ',"bold":true' : ''
+    }${italic ? ',"italic":true' : ''
+    }${underlined ? ',"underlined":true' : ''
+    }}`;
+
+    // Play sound if specified
+    if (sound) {
+      await this.executeCommand(`execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`);
+    }
+
+    // Execute the tellraw command
+    await this.executeCommand(tellrawCommand);
+  }
+
   private createContext(params: Record<string, unknown>): ScriptContext {
     const minecraftAPI = createMinecraftAPI(
       this.sendToMinecraft.bind(this),
@@ -180,15 +225,13 @@ export class ScriptManager {
       sendToMinecraft: this.sendToMinecraft.bind(this),
       sendToPlayer: this.sendToPlayer.bind(this),
       broadcastPlayers: this.broadcastPlayers.bind(this),
+      messagePlayer: this.messagePlayer.bind(this),
       log: this.logger.debug.bind(this.logger),
       api: {
         ...minecraftAPI,
         executeCommand: async (command: string) => {
           return await this.executeCommand(command);
         },
-        tellPlayer: async (command: string) => {
-          return await this.executeCommand(command)
-        }
       },
       display: {
         ...displayApi,

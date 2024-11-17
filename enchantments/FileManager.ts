@@ -57,6 +57,7 @@ export class FileManager {
   }
 
   @Socket('read_directory')
+  @Permission('operator')
   async handleReadDirectory({ params, log }: ScriptContext): Promise<{ files: { path: string, isDirectory: boolean }[] }> {
     try {
       const path = params.path as string || '';
@@ -82,6 +83,7 @@ export class FileManager {
   }
 
   @Socket('read_file')
+  @Permission('operator')
   async handleReadFile({ params, log }: ScriptContext): Promise<{ content: string }> {
     try {
       const path = params.path as string;
@@ -96,6 +98,7 @@ export class FileManager {
   }
 
   @Socket('write_file')
+  @Permission('operator')
   async handleWriteFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const { path, content } = params;
@@ -109,6 +112,7 @@ export class FileManager {
   }
 
   @Socket('rename_file')
+  @Permission('operator')
   async handleRenameFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const { oldPath, newPath } = params;
@@ -137,6 +141,7 @@ export class FileManager {
   }
 
   @Socket('delete_file')
+  @Permission('operator')
   async handleDeleteFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;
@@ -157,6 +162,7 @@ export class FileManager {
   }
 
   @Socket('enable_file')
+  @Permission('operator')
   async handleEnableFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;
@@ -186,6 +192,7 @@ export class FileManager {
   }
 
   @Socket('disable_file')
+  @Permission('operator')
   async handleDisableFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;

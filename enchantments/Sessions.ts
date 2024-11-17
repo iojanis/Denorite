@@ -6,6 +6,11 @@ import { ScriptContext } from '../types.ts';
   version: '1.0.3'
 })
 export class Sessions {
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private generateTicket(length: number = 5): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let ticket = '';
@@ -67,6 +72,8 @@ export class Sessions {
       const sessionId = crypto.randomUUID();
       await kv.set(['player', playerName, 'sessions', sessionId], sessionData);
       await kv.set(['player', playerName, 'currentSession'], sessionId);
+
+      await this.delay(50)
 
       await api.tellraw(playerName, `{"text":"Your Ticket: ${playerTicket}","color":"gold"}`)
     } catch (error) {

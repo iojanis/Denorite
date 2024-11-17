@@ -32,7 +32,7 @@ export class ScriptManager {
   private pendingResponses: Map<string, (value: unknown) => void> = new Map();
   private commandsToRegister: Map<string, CommandMetadata> = new Map();
   private basePath: string;
-  private moduleWatcher: ModuleWatcher;
+  moduleWatcher: ModuleWatcher;
 
   constructor(
     config: ConfigManager,
@@ -61,6 +61,7 @@ export class ScriptManager {
 
   async init(): Promise<void> {
     this.logger.debug('ScriptManager initialized');
+    // await this.kv.set(['server', 'apps'], [])
     this.moduleWatcher.watch();
   }
 
@@ -317,7 +318,7 @@ export class ScriptManager {
     });
   }
 
-  private broadcastPlayers(data: unknown): void {
+  broadcastPlayers(data: unknown): void {
     this.playerSockets.forEach((socket, playerId) => {
       try {
         if (socket.readyState === WebSocket.OPEN) {

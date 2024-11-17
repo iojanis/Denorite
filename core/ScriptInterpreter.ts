@@ -142,6 +142,12 @@ export class ScriptInterpreter {
           const moduleMetadata = getMetadata(exportedItem, 'module') as ModuleMetadata;
 
           if (moduleMetadata?.name && moduleMetadata?.version) {
+            // Check if module already exists and unload it first
+            if (this.modules.has(moduleMetadata.name)) {
+              this.logger.debug(`Module ${moduleMetadata.name} already exists, unloading first`);
+              await this.unloadModule(moduleMetadata.name);
+            }
+
             const moduleContext = this.contextFactory({
               moduleName: moduleMetadata.name,
               moduleVersion: moduleMetadata.version,
@@ -153,6 +159,18 @@ export class ScriptInterpreter {
             this.logger.info(`Loaded module: ${moduleMetadata.name} v${moduleMetadata.version}`);
 
             await this.processModuleMetadata(exportedItem, moduleMetadata);
+
+            // Call onLoad if it exists
+            if (typeof instance.onLoad === 'function') {
+              try {
+                await instance.onLoad();
+              } catch (error) {
+                this.logger.error(`Error during module initialization for ${moduleMetadata.name}: ${(error as Error).message}`);
+                // Consider whether to unload the module on init failure
+                await this.unloadModule(moduleMetadata.name);
+                throw error;
+              }
+            }
           }
         }
       }
@@ -161,6 +179,81 @@ export class ScriptInterpreter {
       throw error;
     }
   }
+
+  async unloadModule(moduleName: string): Promise<void> {
+    this.logger.debug(`Unloading module: ${moduleName}`);
+
+    try {
+      // Get module instance before removing it
+      const moduleData = this.modules.get(moduleName);
+      if (!moduleData) {
+        this.logger.warn(`Attempted to unload non-existent module: ${moduleName}`);
+        return;
+      }
+
+      // Clean up event handlers
+      for (const [eventName, handlers] of this.events.entries()) {
+        this.events.set(
+          eventName,
+          handlers.filter(handler => handler.moduleName !== moduleName)
+        );
+        // Remove empty event entries
+        if (this.events.get(eventName)?.length === 0) {
+          this.events.delete(eventName);
+        }
+      }
+
+      // Clean up commands
+      for (const [commandPath, handler] of this.commands.entries()) {
+        if (handler.moduleName === moduleName) {
+          this.commands.delete(commandPath);
+          this.commandRegistrations.delete(commandPath);
+        }
+      }
+
+      // Clean up socket handlers
+      for (const [socketEvent, handler] of this.sockets.entries()) {
+        if (handler.moduleName === moduleName) {
+          this.sockets.delete(socketEvent);
+        }
+      }
+
+      // Call cleanup method if it exists
+      const instance = moduleData.instance;
+      if (typeof instance.onUnload === 'function') {
+        try {
+          await instance.onUnload();
+        } catch (error) {
+          this.logger.error(`Error during module cleanup for ${moduleName}: ${(error as Error).message}`);
+        }
+      }
+
+      // Remove module from registry
+      this.modules.delete(moduleName);
+      this.logger.info(`Successfully unloaded module: ${moduleName}`);
+    } catch (error) {
+      this.logger.error(`Error unloading module ${moduleName}: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+
+  async unloadAllModules(): Promise<void> {
+    this.logger.debug('Unloading all modules');
+
+    const moduleNames = Array.from(this.modules.keys());
+    for (const moduleName of moduleNames) {
+      await this.unloadModule(moduleName);
+    }
+
+    // Clear all remaining registries just in case
+    this.events.clear();
+    this.commands.clear();
+    this.sockets.clear();
+    this.commandRegistrations.clear();
+
+    this.logger.info('Successfully unloaded all modules');
+  }
+
 
   private async processModuleMetadata(exportedItem: any, moduleMetadata: ModuleMetadata): Promise<void> {
     const allMetadata = listMetadata(exportedItem);

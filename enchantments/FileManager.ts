@@ -166,15 +166,15 @@ export class FileManager {
       if (isDirectory) {
         for await (const entry of walk(fullPath, { includeDirs: false })) {
           const fileName = basename(entry.path);
-          if (fileName.startsWith('_')) {
-            const newPath = join(dirname(entry.path), fileName.substring(1));
+          if (fileName.endsWith('_')) {
+            const newPath = join(dirname(entry.path), fileName.slice(0, -1));
             await Deno.rename(entry.path, newPath);
           }
         }
       } else {
         const fileName = basename(fullPath);
-        if (fileName.startsWith('_')) {
-          const newPath = join(dirname(fullPath), fileName.substring(1));
+        if (fileName.endsWith('_')) {
+          const newPath = join(dirname(fullPath), fileName.slice(0, -1));
           await Deno.rename(fullPath, newPath);
         }
       }
@@ -195,15 +195,15 @@ export class FileManager {
       if (isDirectory) {
         for await (const entry of walk(fullPath, { includeDirs: false })) {
           const fileName = basename(entry.path);
-          if (!fileName.startsWith('_')) {
-            const newPath = join(dirname(entry.path), `_${fileName}`);
+          if (!fileName.endsWith('_')) {
+            const newPath = join(dirname(entry.path), `${fileName}_`);
             await Deno.rename(entry.path, newPath);
           }
         }
       } else {
         const fileName = basename(fullPath);
-        if (!fileName.startsWith('_')) {
-          const newPath = join(dirname(fullPath), `_${fileName}`);
+        if (!fileName.endsWith('_')) {
+          const newPath = join(dirname(fullPath), `${fileName}_`);
           await Deno.rename(fullPath, newPath);
         }
       }

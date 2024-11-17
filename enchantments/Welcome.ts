@@ -105,7 +105,7 @@ export class Welcome {
 
       let welcomeMessage = `Hello, ${playerName}! `;
       welcomeMessage += `It's been ${timeSinceLastSeen} since we last saw you. `;
-      welcomeMessage += `You've played for a total of ${totalPlayTime}. `;
+      // welcomeMessage += `You've played for a total of ${totalPlayTime}. `;
       welcomeMessage += `This is your ${loginCount}${this.getOrdinalSuffix(loginCount)} login.`;
 
       await this.sendWelcomeMessage(playerName, welcomeMessage, api);
@@ -114,7 +114,7 @@ export class Welcome {
       if (lastSession && lastSession.endLocation) {
         const lastLocation = lastSession.endLocation;
         const locationMessage = `Your last known location was at x: ${Math.floor(lastLocation.x)}, y: ${Math.floor(lastLocation.y)}, z: ${Math.floor(lastLocation.z)} in ${lastLocation.dimension}.`;
-        await this.sendWelcomeMessage(playerName, locationMessage, api);
+        // await this.sendWelcomeMessage(playerName, locationMessage, api);
       }
 
       // Server announcements or tips

@@ -185,7 +185,7 @@ export class SocketManager {
 
     let token: string | null = null;
     let playerName: string | null = null;
-    let userRole: 'guest' | 'authenticated' | 'operator' = 'guest';
+    let userRole: 'guest' | 'player' | 'operator' = 'guest';
 
     // Add socket ID to the socket object
     const socketId = crypto.randomUUID();
@@ -221,7 +221,7 @@ export class SocketManager {
           const payload = await this.auth.verifyToken(token as string);
           if (payload && payload.name) {
             playerName = payload.name;
-            userRole = 'authenticated';
+            userRole = 'player';
 
             let user = {
               username: payload.name,
@@ -254,6 +254,34 @@ export class SocketManager {
               message: 'Token expired or invalid!'
             }));
           }
+        } else if (message.eventType === 'get_apps') {
+          console.log('APPS ORDERED')
+          const apps = await this.scriptManager.moduleWatcher.handleAppListRequest(userRole);
+          socket.send(JSON.stringify({
+            type: 'apps_list',
+            success: true,
+            socketId: socketId,
+            data: apps
+          }));
+        } else if (message.eventType === 'get_app_code') {
+          console.log('APP CODE ORDERED')
+          if (!message.data.apps || !Array.isArray(message.data.apps)) {
+            socket.send(JSON.stringify({
+              type: 'error',
+              socketId: socketId,
+              message: 'Invalid request: apps array required'
+            }));
+            return;
+          }
+          const appCode = await this.scriptManager.moduleWatcher.handleAppCodeRequest(message.data.apps, userRole);
+          socket.send(JSON.stringify({
+            type: 'app_code',
+            success: true,
+            socketId: socketId,
+            data: appCode
+          }));
+
+          console.log('APP CODE SENT')
         } else if (message.eventType) {
           await this.scriptManager.handleSocket(
             message.eventType,
@@ -324,7 +352,7 @@ export class SocketManager {
   private async handleWebSocketMessage(message: string, socket: WebSocket, type: 'minecraft' | 'runner') {
     try {
       const data = JSON.parse(message);
-      this.logger.debug(`Received ${type} message: ${JSON.stringify(data)}`);
+      // this.logger.debug(`Received ${type} message: ${JSON.stringify(data)}`);
 
       if (data.eventType) {
         // Handle Minecraft mod events

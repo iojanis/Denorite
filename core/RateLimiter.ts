@@ -8,7 +8,7 @@ interface RateLimitConfig {
 
 interface RateLimitTier {
   guest: RateLimitConfig;
-  authenticated: RateLimitConfig;
+  player: RateLimitConfig;
   operator: RateLimitConfig;
 }
 
@@ -28,7 +28,7 @@ export class RateLimiter {
       maxRequests: 10,
       costMultiplier: 1
     },
-    authenticated: {
+    player: {
       windowMs: 60000,
       maxRequests: 100,
       costMultiplier: 1
@@ -128,7 +128,7 @@ export class RateLimiter {
   async handleSocketRateLimit(
     ip: string,
     method: string,
-    userRole: 'guest' | 'authenticated' | 'operator' = 'guest'
+    userRole: 'guest' | 'player' | 'operator' = 'guest'
   ): Promise<{ allowed: boolean; error?: string }> {
     const result = await this.checkRateLimit(ip, method, userRole);
 

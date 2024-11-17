@@ -53,7 +53,7 @@ export class EventLogger {
         await this.cleanupOldEvents(context, eventType);
       }
 
-      log(`Logged ${eventType} event: ${JSON.stringify(eventData)}`);
+      // log(`Logged ${eventType} event: ${JSON.stringify(eventData)}`);
 
     } catch (error) {
       log(`Error logging ${eventType} event: ${error}`);

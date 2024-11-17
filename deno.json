@@ -7,7 +7,7 @@
     "start": "deno run -A --unstable-kv main.ts",
     "build": "deno run -A --unstable-kv --unstable-broadcast-channel main.ts build",
     "compile": "deno compile -A --unstable-kv --unstable-broadcast-channel main.ts build",
-    "dev": "deno run -A --unstable-kv --watch=core/,api/,modules/ main.ts"
+    "dev": "deno run -A --unstable-kv --watch=core/,api/ main.ts"
   },
   "imports": {
     "$std/": "https://deno.land/std@0.216.0/"

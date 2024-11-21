@@ -244,13 +244,15 @@ export class SocketManager {
                 throw new Error('Failed to retrieve player data after connection');
               }
 
-              userRole = playerData.role;
+              userRole = payload.role;
 
               let user = {
                 username: playerName,
                 role: userRole,
                 permissionLevel: playerData.permissionLevel
               };
+
+              this.playerManager.updatePlayerRole(playerName, user)
 
               this.scriptManager.addPlayerSocket(playerName, socket);
               socket.send(JSON.stringify({

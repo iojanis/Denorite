@@ -132,7 +132,7 @@ export class PlayerManager {
     playerData.connections.set(connectionId, connection);
     this.players.set(playerName, playerData);
 
-    this.logger.info(`WebSocket connection established for ${playerName} (${playerData.role})`);
+    this.logger.info(`WebSocket connection established for ${playerName} (${JSON.stringify(playerData.role)})`);
     return connectionId;
   }
 

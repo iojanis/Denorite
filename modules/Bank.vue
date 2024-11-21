@@ -14,10 +14,9 @@
 -->
 
 <template>
-  <div>
-  Hello World
-    <!-- Add your component template here -->
-  </div>
+  <Button>
+  {{test}} World
+  </Button>
 </template>
 
 <script setup lang="ts">

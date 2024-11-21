@@ -4,11 +4,11 @@ import { walk } from "https://deno.land/std@0.177.0/fs/mod.ts";
 import { dirname, basename, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 
 @Module({
-  name: 'FileManager',
-  version: '1.0.0'
+  name: 'CodeHelper',
+  version: '1.0.1'
 })
-export class FileManager {
-  private readonly ENCHANTMENTS_DIR = Deno.cwd() + '/enchantments';
+export class Files {
+  private readonly ENCHANTMENTS_DIR = Deno.cwd() + '/modules';
 
   private async isDirectory(path: string): Promise<boolean> {
     try {
@@ -16,43 +16,6 @@ export class FileManager {
       return stat.isDirectory;
     } catch {
       return false;
-    }
-  }
-
-  @Command(['files', 'list'])
-  @Description('List all enchantment files and their status')
-  @Permission('operator')
-  @Socket('files_list')
-  async listFiles({ api, params, log }: ScriptContext): Promise<void> {
-    const { sender } = params;
-    try {
-      let fileList = '';
-
-      for await (const entry of walk(this.ENCHANTMENTS_DIR, { includeDirs: false })) {
-        const relativePath = entry.path.replace(this.ENCHANTMENTS_DIR + '/', '');
-        const status = basename(entry.path).startsWith('_') ? '❌' : '✅';
-        fileList += `\n${status} ${relativePath}`;
-      }
-
-      if (!fileList) {
-        await api.tellraw(sender, JSON.stringify({
-          text: "No enchantment files found.",
-          color: "yellow"
-        }));
-        return;
-      }
-
-      await api.tellraw(sender, JSON.stringify({
-        text: `Enchantment files (✅ enabled, ❌ disabled):${fileList}`,
-        color: "green"
-      }));
-      log(`Listed files for ${sender}`);
-    } catch (error) {
-      log(`Error listing files: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
-        text: `Error listing files: ${error.message}`,
-        color: "red"
-      }));
     }
   }
 

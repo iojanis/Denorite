@@ -1,30 +1,51 @@
 import type { Api } from "./types.d.ts";
 import {AuthService} from "./core/AuthService.ts";
 
+import { PlayerManager } from "./core/PlayerManager.ts";
+
 export interface ScriptContext {
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   kv: Deno.Kv;
   sendToMinecraft: (data: unknown) => Promise<unknown>;
   sendToPlayer: (playerId: string, data: unknown) => void;
+  broadcastPlayers: (data: unknown) => void;
+  messagePlayer: (playerId: string, message: string, options?: {
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underlined?: boolean;
+    sound?: string;
+  }) => Promise<void>;
   log: (message: string) => void;
-  api: Api; // Replace with a more specific type if available
-  auth: AuthService; // Replace with a more specific type if available
-  config: unknown; // Replace with a more specific type if available
+  api: {
+    executeCommand: (command: string) => Promise<unknown>;
+    [key: string]: any;
+  };
+  display: {
+    executeCommand: (command: string) => Promise<unknown>;
+    [key: string]: any;
+  };
+  auth: any;
   executeModuleScript: (moduleName: string, methodName: string, params: Record<string, unknown>) => Promise<unknown>;
-}
-
-export interface SessionData {
-  startTime: string;
-}
-
-export interface PlayerStats {
-  totalPlayTime: number;
-  loginCount: number;
-  blocksPlaced: number;
-  blocksBroken: number;
+  playerManager: PlayerManager;
+  players: PlayerData[];
+  isOnline: (playerName: string) => boolean;
+  isOperator: (playerName: string) => boolean;
 }
 
 export interface PlayerData {
-  stats: PlayerStats;
-  achievements: string[];
+  name: string;
+  id: string;
+  role: 'guest' | 'player' | 'operator';
+  joinTime: string;
+  location?: {
+    x: number;
+    y: number;
+    z: number;
+    dimension: string;
+  };
+  clientInfo?: {
+    ip: string;
+    version: string;
+  };
 }

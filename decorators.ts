@@ -1,6 +1,80 @@
 // deno-lint-ignore-file
 // src/decorators.ts
+// deno-lint-ignore-file
+import { PlayerManager } from "./core/PlayerManager.ts";
 
+// ... (existing metadata handling code from decorators.ts remains the same)
+
+export function Online(location: 'game' | 'web' | 'both' = 'both') {
+  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+    setMetadata(context.metadata, `online:${context.name.toString()}`, location);
+    return async function (this: any, ...args: unknown[]) {
+      const [scriptContext] = args;
+      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+      const sender = params.sender || params.playerName;
+
+      if (!sender) {
+        throw new Error('No sender specified for online-required action');
+      }
+
+      const isOnline = playerManager.isOnline(sender);
+      if (!isOnline) {
+        throw new Error('Player must be online to perform this action');
+      }
+
+      // Add location-specific checks if needed
+      const player = playerManager.getPlayer(sender);
+      if (location === 'game' && !player?.location) {
+        throw new Error('This action requires the player to be in-game');
+      }
+
+      return originalMethod.apply(this, args);
+    };
+  };
+}
+
+export function Permission(permission: string) {
+  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+    setMetadata(context.metadata, `permission:${context.name.toString()}`, permission);
+    return async function (this: any, ...args: unknown[]) {
+      const [scriptContext] = args;
+      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+      const sender = params.sender || params.playerName;
+
+      if (!sender) {
+        throw new Error('No sender specified for permission check');
+      }
+
+      if (!playerManager.hasPermission(sender, permission)) {
+        throw new Error(`Insufficient permissions. Required: ${permission}`);
+      }
+
+      return originalMethod.apply(this, args);
+    };
+  };
+}
+
+// Update the existing Command decorator to handle permissions
+export function Command(commandPath: string[]) {
+  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+    setMetadata(context.metadata, `command:${context.name.toString()}`, { path: commandPath });
+    return async function (this: any, ...args: unknown[]) {
+      const [scriptContext] = args;
+      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+
+      // Get the permission requirement from metadata
+      const permissionMetadata = getMetadata(context.metadata, `permission:${context.name.toString()}`);
+      if (permissionMetadata) {
+        const sender = params.sender;
+        if (!playerManager.hasPermission(sender, permissionMetadata)) {
+          throw new Error(`Insufficient permissions. Required: ${permissionMetadata}`);
+        }
+      }
+
+      return originalMethod.apply(this, args);
+    };
+  };
+}
 // Helper function to store metadata
 function setMetadata(target: any, key: string, value: any) {
   if (!target[metadataSymbol]) {
@@ -31,15 +105,15 @@ export function Event(eventName: string) {
   };
 }
 
-export function Command(commandPath: string[]) {
-  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `command:${context.name.toString()}`, { path: commandPath });
-    return function (this: any, ...args: unknown[]) {
-      // Here you can add command-specific logic
-      return originalMethod.apply(this, args);
-    };
-  };
-}
+// export function Command(commandPath: string[]) {
+//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+//     setMetadata(context.metadata, `command:${context.name.toString()}`, { path: commandPath });
+//     return function (this: any, ...args: unknown[]) {
+//       // Here you can add command-specific logic
+//       return originalMethod.apply(this, args);
+//     };
+//   };
+// }
 
 export function Argument(configs: { name: string; type: string; description: string }[]) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
@@ -51,9 +125,31 @@ export function Argument(configs: { name: string; type: string; description: str
   };
 }
 
-export function Permission(permission: string) {
+// export function Permission(permission: string) {
+//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+//     setMetadata(context.metadata, `permission:${context.name.toString()}`, permission);
+//     return function (this: any, ...args: unknown[]) {
+//       // Here you can add permission-specific logic
+//       return originalMethod.apply(this, args);
+//     };
+//   };
+// }
+
+// // todo: if a method should only be executed if sender is online in a location (game / web | empty (both)) (can be combined with socket / command)
+// export function Online(location: string) {
+//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+//     setMetadata(context.metadata, `online:${context.name.toString()}`, location);
+//     return function (this: any, ...args: unknown[]) {
+//       // Here you can add permission-specific logic
+//       return originalMethod.apply(this, args);
+//     };
+//   };
+// }
+
+// todo: limit execution rate for a method
+export function Limit(limit: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `permission:${context.name.toString()}`, permission);
+    setMetadata(context.metadata, `limit:${context.name.toString()}`, limit);
     return function (this: any, ...args: unknown[]) {
       // Here you can add permission-specific logic
       return originalMethod.apply(this, args);

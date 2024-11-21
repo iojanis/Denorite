@@ -6,6 +6,7 @@ import { ScriptManager } from "./ScriptManager.ts";
 import { Logger } from "./logger.ts";
 import { AuthService } from "./AuthService.ts";
 import {RateLimiter} from "./RateLimiter.ts";
+import { PlayerManager, PlayerData } from "./PlayerManager.ts";
 
 export class SocketManager {
   private config: ConfigManager;
@@ -13,6 +14,7 @@ export class SocketManager {
   private logger: Logger;
   private auth: AuthService;
   private rateLimiter!: RateLimiter;
+  private playerManager: PlayerManager;
 
   constructor(
     config: ConfigManager,
@@ -27,6 +29,7 @@ export class SocketManager {
 
     if (!this.scriptManager.kv) return
     this.rateLimiter = new RateLimiter(this.scriptManager.kv.kv);
+    this.playerManager = new PlayerManager(logger, scriptManager.kv);
 
     this.rateLimiter.setMethodCost('custom_command_executed', 5);
     this.rateLimiter.setMethodCost('auth', 3);
@@ -34,6 +37,7 @@ export class SocketManager {
 
   async init() {
     this.logger.info('SocketManager initialized')
+    this.scriptManager.setPlayerManager(this.playerManager);
   }
 
   private getClientIp(connInfo: Deno.ServeHandlerInfo): Deno.Addr {
@@ -186,14 +190,15 @@ export class SocketManager {
     let token: string | null = null;
     let playerName: string | null = null;
     let userRole: 'guest' | 'player' | 'operator' = 'guest';
+    let connectionId: string | null = null;
 
     // Add socket ID to the socket object
     const socketId = crypto.randomUUID();
     (socket as any).id = socketId;
 
     socket.onopen = () => {
-      this.logger.debug(`New player WebSocket connection established (Socket ID: ${socketId})`);
-      this.sendServerInfo(socket, 'guest');
+      this.logger.debug(`WS: ${playerName || 'guest'} ${userRole} (Socket ID: ${socketId})`);
+      this.sendServerInfo(socket, userRole);
     };
 
     socket.onmessage = async (event) => {
@@ -218,44 +223,63 @@ export class SocketManager {
 
         if (message.eventType === 'auth') {
           token = message.data.token;
-          const payload = await this.auth.verifyToken(token as string);
-          if (payload && payload.name) {
-            playerName = payload.name;
-            userRole = 'player';
+          try {
+            const payload = await this.auth.verifyToken(token as string);
+            if (payload && payload.name) {
+              playerName = payload.name;
 
-            let user = {
-              username: payload.name,
-              role: 'player',
-              permissionLevel: 1
-            };
+              // Handle the WebSocket connection with the player manager
+              connectionId = await this.playerManager.handleWebSocketConnection(
+                socket,
+                payload,
+                {
+                  ip: clientIp.hostname as string,
+                  userAgent: req.headers.get("User-Agent") || "unknown"
+                }
+              );
 
-            const playerRoleResult = await this.scriptManager.kv.get(['player', payload.name, 'role']);
-            if (playerRoleResult === 'operator') {
-              user.role = 'operator';
-              user.permissionLevel = 1;
-              userRole = 'operator';
+              // Get the updated player data
+              const playerData = this.playerManager.getPlayer(playerName);
+              if (!playerData) {
+                throw new Error('Failed to retrieve player data after connection');
+              }
+
+              userRole = playerData.role;
+
+              let user = {
+                username: playerName,
+                role: userRole,
+                permissionLevel: playerData.permissionLevel
+              };
+
+              this.scriptManager.addPlayerSocket(playerName, socket);
+              socket.send(JSON.stringify({
+                type: 'authenticated',
+                success: true,
+                socketId: socketId,
+                connectionId,
+                user,
+                message: 'Logged in as ' + playerName
+              }));
+
+              this.sendServerInfo(socket, userRole);
+            } else {
+              socket.send(JSON.stringify({
+                type: 'auth_failed',
+                success: false,
+                socketId: socketId,
+                message: 'Token expired or invalid!'
+              }));
             }
-
-            this.scriptManager.addPlayerSocket(playerName, socket);
-            socket.send(JSON.stringify({
-              type: 'authenticated',
-              success: true,
-              socketId: socketId,
-              user,
-              message: 'Logged in as ' + playerName
-            }));
-
-            this.sendServerInfo(socket, 'player');
-          } else {
+          } catch (error) {
             socket.send(JSON.stringify({
               type: 'auth_failed',
               success: false,
               socketId: socketId,
-              message: 'Token expired or invalid!'
+              message: 'Authentication failed: ' + error.message
             }));
           }
         } else if (message.eventType === 'get_apps') {
-          console.log('APPS ORDERED')
           const apps = await this.scriptManager.moduleWatcher.handleAppListRequest(userRole);
           socket.send(JSON.stringify({
             type: 'apps_list',
@@ -264,7 +288,6 @@ export class SocketManager {
             data: apps
           }));
         } else if (message.eventType === 'get_app_code') {
-          console.log('APP CODE ORDERED')
           if (!message.data.apps || !Array.isArray(message.data.apps)) {
             socket.send(JSON.stringify({
               type: 'error',
@@ -273,19 +296,21 @@ export class SocketManager {
             }));
             return;
           }
-          const appCode = await this.scriptManager.moduleWatcher.handleAppCodeRequest(message.data.apps, userRole);
+          const appCode = await this.scriptManager.moduleWatcher.handleAppCodeRequest(
+            message.data.apps,
+            userRole
+          );
           socket.send(JSON.stringify({
             type: 'app_code',
             success: true,
             socketId: socketId,
             data: appCode
           }));
-
-          console.log('APP CODE SENT')
         } else if (message.eventType) {
+          // Always pass playerName (null for guests) to maintain scriptManager requirements
           await this.scriptManager.handleSocket(
             message.eventType,
-            playerName,
+            playerName, // null if guest, actual name if authenticated
             socket,
             message.data,
             message.messageId
@@ -294,17 +319,25 @@ export class SocketManager {
           socket.send(JSON.stringify({
             type: 'error',
             socketId: socketId,
-            message: 'Invalid message or not authenticated ' + JSON.stringify(event.data)
+            message: 'Invalid message format'
           }));
         }
       } catch (error: any) {
         this.logger.error(`Error processing player WebSocket message (Socket ID: ${socketId}): ${error.message}`);
+        socket.send(JSON.stringify({
+          type: 'error',
+          socketId: socketId,
+          message: error.message
+        }));
       }
     };
 
     socket.onclose = () => {
       this.logger.debug(`Player WebSocket connection closed (Socket ID: ${socketId})`);
-      if (playerName) {
+
+      // Clean up the connection in the player manager if authenticated
+      if (playerName && connectionId) {
+        this.playerManager.disconnectPlayer(playerName, connectionId);
         this.scriptManager.removePlayerSocket(playerName);
       }
     };
@@ -315,16 +348,18 @@ export class SocketManager {
   async sendServerInfo(socket: WebSocket, permission: 'guest' | 'player' | 'operator') {
     try {
       // Load server info from KV store
-      const serverName = await this.scriptManager.kv.get(['server', 'name']) || 'COU.AI';
-      const serverDescription = await this.scriptManager.kv.get(['server', 'description']) || 'The Official: Craft Operations Unit Server.';
-      const serverUrl = await this.scriptManager.kv.get(['server', 'url']) || 'cou.ai';
-      const minecraftVersion = await this.scriptManager.kv.get(['server', 'minecraft_version']) || '1.20.4';
+      const serverName = await this.scriptManager.kv.get(['server', 'name']) || ['server', 'name'];
+      const serverDescription = await this.scriptManager.kv.get(['server', 'description']) || ['server', 'description'];
+      const serverUrl = await this.scriptManager.kv.get(['server', 'url']) || ['server', 'url'];
+      const minecraftVersion = await this.scriptManager.kv.get(['server', 'version']) || ['server', 'version'];
 
       // Load apps configuration from KV
       const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
 
       // Get available commands based on permission level
       const commands = this.scriptManager.getCommandsByPermission(permission);
+
+      // console.dir(commands)
 
       // Send the server info to the client
       socket.send(JSON.stringify({
@@ -355,11 +390,23 @@ export class SocketManager {
       // this.logger.debug(`Received ${type} message: ${JSON.stringify(data)}`);
 
       if (data.eventType) {
-        // Handle Minecraft mod events
+        // Handle core events first
+        if (data.eventType === "player_joined") {
+          await this.handlePlayerJoined(data.data);
+        }
+
+        if (data.eventType === "player_left") {
+          await this.handlePlayerLeft(data.data);
+        }
 
         if (data.eventType === "custom_command_executed") {
-          await this.scriptManager.handleCommand(data.data.command, data.data.subcommand, data.data.arguments, data.data.sender, data.data.senderType)
-          .catch(error => {
+          await this.scriptManager.handleCommand(
+            data.data.command,
+            data.data.subcommand,
+            data.data.arguments,
+            data.data.sender,
+            data.data.senderType
+          ).catch(error => {
             this.logger.error(`Error handling command: ${error}`);
           });
           return;
@@ -385,6 +432,179 @@ export class SocketManager {
         type: 'error',
         error: 'Internal server error'
       }));
+    }
+  }
+
+  private async handlePlayerJoined(data: {
+    playerId: string;
+    playerName: string;
+    x: number;
+    y: number;
+    z: number;
+    dimension: string;
+    ip?: string;
+    version?: string;
+  }): Promise<void> {
+    try {
+      const { playerId, playerName, x, y, z, dimension, ip, version } = data;
+
+      // Store player ID/name mappings in KV store
+      const mappingResult = await this.scriptManager.kv.atomic()
+        .set(['playerNameToId', playerName], playerId)
+        .set(['playerIdToName', playerId], playerName)
+        .commit();
+
+      if (!mappingResult.ok) {
+        throw new Error('Failed to store player mappings');
+      }
+
+      // Handle the Minecraft connection with the new player manager
+      const connectionId = await this.playerManager.handleMinecraftConnection({
+        playerId,
+        playerName,
+        location: { x, y, z, dimension },
+        clientInfo: {
+          ip: ip || 'unknown',
+          version: version || 'unknown'
+        }
+      });
+
+      // Get the updated player data
+      const playerData = this.playerManager.getPlayer(playerName);
+      if (!playerData) {
+        throw new Error('Failed to retrieve player data after connection');
+      }
+
+      // Notify other connected clients about the player join
+      // await this.scriptManager.handleEvent('player_joined', {
+      //   connectionId,
+      //   playerId,
+      //   playerName,
+      //   role: playerData.role,
+      //   location: { x, y, z, dimension },
+      //   timestamp: Date.now(),
+      //   clientInfo: {
+      //     ip: ip || 'unknown',
+      //     version: version || 'unknown'
+      //   }
+      // });
+
+      this.logger.info(`Player joined: ${playerName} (${playerData.role})`);
+
+    } catch (error: any) {
+      this.logger.error(`Error in handlePlayerJoined: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private async handlePlayerLeft(data: {
+    playerId: string;
+    playerName: string;
+    x: number;
+    y: number;
+    z: number;
+    dimension: string;
+    reason?: string;
+  }): Promise<void> {
+    try {
+      const { playerId, playerName, x, y, z, dimension, reason } = data;
+
+      // Get player data before disconnection
+      const playerData = this.playerManager.getPlayer(playerName);
+      if (!playerData) {
+        this.logger.warn(`Player left but no data found: ${playerName}`);
+        return;
+      }
+
+      // Find and remove the Minecraft connection
+      const minecraftConnection = Array.from(playerData.connections.entries())
+        .find(([_, conn]) => conn.type === 'minecraft');
+
+      if (!minecraftConnection) {
+        this.logger.warn(`No Minecraft connection found for leaving player: ${playerName}`);
+        return;
+      }
+
+      const [connectionId] = minecraftConnection;
+
+      // Record final location before disconnection
+      const finalLocation = {
+        x,
+        y,
+        z,
+        dimension
+      };
+
+      // Update player data with final location
+      if (playerData.location) {
+        playerData.location = finalLocation;
+      }
+
+      // Remove the Minecraft connection
+      this.playerManager.disconnectPlayer(playerName, connectionId);
+
+      // Get updated player data to check if they're still connected via WebSocket
+      const updatedPlayerData = this.playerManager.getPlayer(playerName);
+      const hasWebSocketConnection = updatedPlayerData &&
+        Array.from(updatedPlayerData.connections.values())
+          .some(conn => conn.type === 'websocket');
+
+      // Prepare leave event data
+      const leaveEventData = {
+        connectionId,
+        playerId,
+        playerName,
+        role: playerData.role,
+        location: finalLocation,
+        timestamp: Date.now(),
+        reason: reason || 'player_left',
+        remainingConnections: {
+          total: updatedPlayerData?.connections.size || 0,
+          hasWebSocket: hasWebSocketConnection
+        }
+      };
+
+      // Notify other connected clients about the player leave
+      // await this.scriptManager.handleEvent('player_left', leaveEventData);
+
+      // If player still has WebSocket connections, notify them about the game disconnect
+      if (hasWebSocketConnection) {
+        for (const connection of updatedPlayerData!.connections.values()) {
+          if (connection.type === 'websocket' && connection.socket) {
+            connection.socket.send(JSON.stringify({
+              type: 'minecraft_disconnected',
+              timestamp: Date.now(),
+              location: finalLocation,
+              reason: reason || 'player_left'
+            }));
+          }
+        }
+      }
+
+      // Optional: Store last known location in KV store if needed
+      try {
+        await this.scriptManager.kv.set(
+          ['player', playerName, 'lastLocation'],
+          finalLocation
+        );
+      } catch (kvError) {
+        this.logger.warn(`Failed to store last location for ${playerName}: ${kvError.message}`);
+      }
+
+      // Log appropriate message based on remaining connections
+      if (updatedPlayerData) {
+        this.logger.info(
+          `Player ${playerName} disconnected from Minecraft but remains connected via WebSocket`
+        );
+      } else {
+        this.logger.info(
+          `Player ${playerName} fully disconnected (Role: ${playerData.role})`
+        );
+      }
+
+    } catch (error: any) {
+      this.logger.error(`Error in handlePlayerLeft: ${error.message}`);
+      throw error;
     }
   }
 

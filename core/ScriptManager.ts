@@ -11,6 +11,7 @@ import { dirname, fromFileUrl, resolve } from "https://deno.land/std@0.177.0/pat
 import { RateLimiter } from "./RateLimiter.ts";
 import {createDisplayAPI} from "../api/displayAPI.ts";
 import { ModuleWatcher } from "./ModuleWatcher.ts";
+import { PlayerManager } from "./PlayerManager.ts";
 
 interface CommandMetadata {
   name: string;
@@ -31,6 +32,7 @@ export class ScriptManager {
   private runnerSockets: Map<string, WebSocket> = new Map();
   private pendingResponses: Map<string, (value: unknown) => void> = new Map();
   private commandsToRegister: Map<string, CommandMetadata> = new Map();
+  public playerManager: PlayerManager;
   private basePath: string;
   moduleWatcher: ModuleWatcher;
 
@@ -45,11 +47,12 @@ export class ScriptManager {
     this.logger = logger;
     this.auth = auth;
     this.basePath = dirname(fromFileUrl(import.meta.url));
+    this.playerManager = new PlayerManager(logger);
 
     this.moduleWatcher = new ModuleWatcher(
       this,
       this.logger,
-      resolve(this.basePath, '../enchantments')
+      resolve(this.basePath, '../modules')
     );
 
     // Initialize the interpreter with our context factory
@@ -79,7 +82,7 @@ export class ScriptManager {
   }
 
   async loadModules(): Promise<void> {
-    const enchantmentsDir = resolve(this.basePath, '../enchantments');
+    const enchantmentsDir = resolve(this.basePath, '../modules');
     this.logger.info('Loading modules from ' + enchantmentsDir);
 
     for await (const entry of walk(enchantmentsDir, {
@@ -208,6 +211,10 @@ export class ScriptManager {
     await this.executeCommand(tellrawCommand);
   }
 
+  setPlayerManager(playerManager: PlayerManager): void {
+    this.playerManager = playerManager;
+  }
+
   private createContext(params: Record<string, unknown>): ScriptContext {
     const minecraftAPI = createMinecraftAPI(
       this.sendToMinecraft.bind(this),
@@ -241,6 +248,10 @@ export class ScriptManager {
         },
       },
       auth: this.auth,
+      playerManager: this.playerManager,
+      players: this.playerManager.getAllPlayers(),
+      isOnline: (playerName: string) => this.playerManager.isOnline(playerName),
+      isOperator: (playerName: string) => this.playerManager.isOperator(playerName),
       executeModuleScript: this.executeModuleScript.bind(this),
     };
   }

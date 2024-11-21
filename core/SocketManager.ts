@@ -252,7 +252,7 @@ export class SocketManager {
                 permissionLevel: playerData.permissionLevel
               };
 
-              this.playerManager.updatePlayerRole(playerName, user)
+              this.playerManager.updatePlayerRole(playerName, userRole)
 
               this.scriptManager.addPlayerSocket(playerName, socket);
               socket.send(JSON.stringify({

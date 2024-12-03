@@ -23,7 +23,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     try {
       const result = await sendToMinecraft({ type: 'command', data: command });
-      log(`Command result: ${JSON.stringify(result)}`);
+      // log(`Command result: ${JSON.stringify(result)}`);
 
       // Check if the result is a string (which seems to be the case now)
       if (typeof result.result === 'string') {
@@ -74,7 +74,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       }
 
       const result = await sendToMinecraft({ type: 'command', data: command });
-      log(`XP command result: ${JSON.stringify(result)}`);
+      // log(`XP command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
         throw new Error(result.error);
@@ -88,7 +88,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     async teleport(target, x, y, z) {
       const command = `tp ${target} ${x} ${y} ${z}`;
       const result = await sendToMinecraft({ type: 'command', data: command });
-      log(`Teleport command result: ${JSON.stringify(result)}`);
+      // log(`Teleport command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
         throw new Error(result.error);
@@ -100,7 +100,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     async give(target, item, amount = 1) {
       const command = `give ${target} ${item} ${amount}`;
       const result = await sendToMinecraft({ type: 'command', data: command });
-      log(`Give command result: ${JSON.stringify(result)}`);
+      // log(`Give command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
         throw new Error(result.error);
@@ -122,7 +122,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     async setBlock(x, y, z, block) {
       const command = `setblock ${x} ${y} ${z} ${block}`;
       const result = await sendToMinecraft({ type: 'command', data: command });
-      log(`SetBlock command result: ${JSON.stringify(result)}`);
+      // log(`SetBlock command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
         throw new Error(result.error);
@@ -134,7 +134,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     async executeAs(target, command) {
       const fullCommand = `execute as ${target} run ${command}`;
       const result = await sendToMinecraft({ type: 'command', data: fullCommand });
-      log(`Execute command result: ${JSON.stringify(result)}`);
+      // log(`Execute command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
         throw new Error(result.error);

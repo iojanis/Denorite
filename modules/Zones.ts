@@ -14,8 +14,6 @@ interface Zone {
   description: string;
   positions: [Position, Position, Position, Position];
   center: Position;
-  size: number;
-  allowedPlayers: string[];  // Individual players allowed in zone
   teleportEnabled: boolean;
   forSale: boolean;
   price: number;
@@ -23,27 +21,14 @@ interface Zone {
   createdBy: string;
 }
 
-interface ZonePrice {
-  baseSize: number;
-  baseCost: number;
-  costPerExtraBlock: number;
-}
-
 @Module({
   name: 'Zones',
   version: '1.0.1',
-  description: 'Zone management with Leukocyte protection and team integration'
+  description: 'Zone management with teams and economy integration'
 })
 export class Zones {
-  private readonly DEFAULT_ZONE_SIZE = 128;
-  private readonly MIN_ZONE_SIZE = 16;
-  private readonly MAX_ZONE_SIZE = 512;
-
-  private readonly ZONE_PRICING: ZonePrice = {
-    baseSize: 128,
-    baseCost: 111,
-    costPerExtraBlock: 1
-  };
+  private readonly ZONE_SIZE = 128;
+  private readonly ZONE_COST = 111;
 
   private createSlug(name: string): string {
     return name.toLowerCase()
@@ -51,33 +36,17 @@ export class Zones {
       .replace(/(^_|_$)/g, '');
   }
 
-  private calculateZoneCost(size: number): number {
-    if (size <= this.ZONE_PRICING.baseSize) {
-      return this.ZONE_PRICING.baseCost;
-    }
-    const extraBlocks = size - this.ZONE_PRICING.baseSize;
-    return this.ZONE_PRICING.baseCost + (extraBlocks * this.ZONE_PRICING.costPerExtraBlock);
-  }
-
-  private validateZoneSize(size: number): void {
-    if (size < this.MIN_ZONE_SIZE) {
-      throw new Error(`Zone size cannot be smaller than ${this.MIN_ZONE_SIZE} blocks`);
-    }
-    if (size > this.MAX_ZONE_SIZE) {
-      throw new Error(`Zone size cannot be larger than ${this.MAX_ZONE_SIZE} blocks`);
-    }
-  }
-
-  private createPositions(x: number, y: number, z: number, size: number): [Position, Position, Position, Position] {
+  private createPositions(x: number, y: number, z: number): [Position, Position, Position, Position] {
     return [
-      { x: x - size, y, z: z - size },
-      { x: x + size, y, z: z - size },
-      { x: x + size, y, z: z + size },
-      { x: x - size, y, z: z + size }
+      { x: x - this.ZONE_SIZE, y, z: z - this.ZONE_SIZE },
+      { x: x + this.ZONE_SIZE, y, z: z - this.ZONE_SIZE },
+      { x: x + this.ZONE_SIZE, y, z: z + this.ZONE_SIZE },
+      { x: x - this.ZONE_SIZE, y, z: z + this.ZONE_SIZE }
     ];
   }
 
   private isOverlapping(newZone: Zone, existingZone: Zone): boolean {
+    // Add buffer zone of 1 block to prevent adjacent zones
     const buffer = 1;
     const [p1, p2, p3, p4] = newZone.positions;
     const [q1, q2, q3, q4] = existingZone.positions;
@@ -97,98 +66,159 @@ export class Zones {
     return !(p1.x > x || p2.x < x || p1.z > z || p3.z < z);
   }
 
-  private async setupZoneProtection(api: any, zone: Zone): Promise<void> {
+  private createSquareCoordinates(position: Position) {
+    const centerX = Math.round(position.x);
+    const centerZ = Math.round(position.z);
+    const centerY = Math.round(position.y);
+
+    return {
+      centerX,
+      centerZ,
+      centerY,
+      point1X: centerX + 129,
+      point1Z: centerZ - 127,
+      point2X: centerX - 127,
+      point2Z: centerZ - 127,
+      point3X: centerX - 127,
+      point3Z: centerZ + 129,
+      point4X: centerX + 129,
+      point4Z: centerZ + 129,
+      point1Y: 0,
+      centerYCoordinate: 0,
+      point4Y: 0
+    };
+  }
+
+  private async setupZoneProtection(rcon: any, coords: any, teamId: string): Promise<void> {
+    // Command block content needs proper escaping for JSON strings
+    const commandBlocks = [
+      {
+        // Center - Team members survival mode
+        x: coords.point2X + 128,
+        y: 2,
+        z: coords.point2Z + 128,
+        block: `repeating_command_block{auto:1b,Command:"gamemode survival @a[x=${coords.point2X + 4},y=0,z=${coords.point2Z + 4},dx=247,dy=256,dz=247,gamemode=adventure,team=${teamId}]"}`
+      },
+      {
+        // North border
+        x: coords.point2X + 128,
+        y: 1,
+        z: coords.point2Z + 127,
+        block: `repeating_command_block{auto:1b,Command:"gamemode survival @a[x=${coords.point2X},y=0,z=${coords.point2Z},dx=250,dy=256,dz=2,gamemode=adventure,team=!${teamId}]"}`
+      },
+      {
+        // East border
+        x: coords.point2X + 129,
+        y: 1,
+        z: coords.point2Z + 128,
+        block: `repeating_command_block{auto:1b,Command:"gamemode survival @a[x=${coords.point1X - 3},y=0,z=${coords.point1Z},dx=2,dy=256,dz=250,gamemode=adventure,team=!${teamId}]"}`
+      },
+      {
+        // South border
+        x: coords.point2X + 128,
+        y: 1,
+        z: coords.point2Z + 129,
+        block: `repeating_command_block{auto:1b,Command:"gamemode survival @a[x=${coords.point3X + 3},y=0,z=${coords.point3Z - 3},dx=250,dy=256,dz=2,gamemode=adventure,team=!${teamId}]"}`
+      },
+      {
+        // West border
+        x: coords.point2X + 127,
+        y: 1,
+        z: coords.point2Z + 128,
+        block: `repeating_command_block{auto:1b,Command:"gamemode survival @a[x=${coords.point2X},y=0,z=${coords.point2Z + 3},dx=2,dy=256,dz=250,gamemode=adventure,team=!${teamId}]"}`
+      },
+      {
+        // Center - Non-team members adventure mode
+        x: coords.point2X + 128,
+        y: 0,
+        z: coords.point2Z + 128,
+        block: `repeating_command_block{auto:1b,Command:"gamemode adventure @a[x=${coords.point2X + 4},y=0,z=${coords.point2Z + 4},dx=247,dy=256,dz=247,gamemode=survival,team=!${teamId}]"}`
+      }
+    ];
+
     try {
-      const [p1, p2, p3, p4] = zone.positions;
-      const authorityId = `zone_${zone.id}`;
+      // Place all command blocks
+      for (const cmd of commandBlocks) {
+        const command = `setblock ${cmd.x} ${cmd.y} ${cmd.z} ${cmd.block}`;
+        await rcon.executeCommand(command);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
 
-      // Create the protection authority
-      await api.executeCommand(`protect add ${authorityId}`);
-
-      // Create the shape for the zone
-      await api.executeCommand(`protect shape start`);
-      await api.executeCommand(
-        `protect shape add ${Math.floor(p1.x)} ${Math.floor(p1.y)} ${Math.floor(p1.z)} ` +
-        `${Math.ceil(p3.x)} ${Math.ceil(p3.y)} ${Math.ceil(p3.z)}`
+      // Place stone then redstone to power the system
+      await rcon.executeCommand(
+        `setblock ${coords.point2X + 128} 1 ${coords.point2Z + 128} stone`
       );
-      await api.executeCommand(`protect shape finish ${zone.id}_shape to ${authorityId}`);
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Set protection rules
-      const rules = [
-        'place deny',
-        'break deny',
-        'interact_blocks deny',
-        'interact_entities deny',
-        'attack deny',
-        'throw_items deny',
-        'crafting deny'
+      await rcon.executeCommand(
+        `setblock ${coords.point2X + 128} 1 ${coords.point2Z + 128} redstone_block`
+      );
+
+      // Add visual markers for zone boundaries
+      const markers = [
+        { x: coords.point1X, z: coords.point1Z },
+        { x: coords.point2X, z: coords.point2Z },
+        { x: coords.point3X, z: coords.point3Z },
+        { x: coords.point4X, z: coords.point4Z }
       ];
 
-      for (const rule of rules) {
-        await api.executeCommand(`protect set rule ${authorityId} ${rule}`);
+      for (const marker of markers) {
+        await rcon.executeCommand(
+          `setblock ${marker.x} ${coords.centerY} ${marker.z} glowstone`
+        );
       }
-
-      // Add team membership exclusion
-      await api.executeCommand(`protect exclusion add ${authorityId} team ${zone.teamId}`);
-
-      // Add individual player exclusions
-      for (const player of zone.allowedPlayers) {
-        await api.executeCommand(`protect exclusion add ${authorityId} player ${player}`);
-      }
-
-      // Set priority level
-      await api.executeCommand(`protect set level ${authorityId} 10`);
-
     } catch (error) {
       throw new Error(`Failed to setup zone protection: ${error.message}`);
     }
   }
 
-  private async removeZoneProtection(api: any, zoneId: string): Promise<void> {
-    try {
-      const authorityId = `zone_${zoneId}`;
-      await api.executeCommand(`protect remove ${authorityId}`);
-    } catch (error) {
-      throw new Error(`Failed to remove zone protection: ${error.message}`);
-    }
+  private async createZoneDisplay(api: any, coords: any, name: string, description: string): Promise<void> {
+    await api.summon(
+      'minecraft:text_display',
+      coords.centerX,
+      coords.centerY,
+      coords.centerZ,
+      `{text:'${JSON.stringify(description)}',background:0,transformation:{translation:[0f,0f,0f],scale:[1f,1f,1f]}}`
+    );
+
+    await api.summon(
+      'minecraft:text_display',
+      coords.centerX,
+      coords.centerY + 1,
+      coords.centerZ,
+      `{text:'${JSON.stringify(name)}',background:0,transformation:{translation:[0f,0f,0f],scale:[1f,1f,1f]}}`
+    );
   }
 
-  private async updateZoneAccess(api: any, zone: Zone, player: string, grant: boolean): Promise<void> {
-    try {
-      const authorityId = `zone_${zone.id}`;
-      if (grant) {
-        await api.executeCommand(`protect exclusion add ${authorityId} player ${player}`);
-      } else {
-        await api.executeCommand(`protect exclusion remove ${authorityId} player ${player}`);
-      }
-    } catch (error) {
-      throw new Error(`Failed to update zone access: ${error.message}`);
-    }
-  }
+  private async removeZoneProtection(api: any, coords: any): Promise<void> {
+    const blocks = [
+      { x: coords.point2X + 128, y: 2, z: coords.point2Z + 128 },   // Center
+      { x: coords.point2X + 128, y: 1, z: coords.point2Z + 127 },   // North
+      { x: coords.point2X + 129, y: 1, z: coords.point2Z + 128 },   // East
+      { x: coords.point2X + 128, y: 1, z: coords.point2Z + 129 },   // South
+      { x: coords.point2X + 127, y: 1, z: coords.point2Z + 128 },   // West
+      { x: coords.point2X + 128, y: 0, z: coords.point2Z + 128 },   // Adventure mode
+      { x: coords.point2X + 128, y: 1, z: coords.point2Z + 128 }    // Redstone block
+    ];
 
-  private async isTeamLeaderOrOfficer(kv: any, playerId: string, teamId: string): Promise<boolean> {
-    const teamResult = await kv.get(['teams', teamId]);
-    const team = teamResult.value;
-    return team && (team.leader === playerId || team.officers.includes(playerId));
+    for (const block of blocks) {
+      await api.setBlock(block.x, block.y, block.z, 'minecraft:air');
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
   }
 
   @Command(['zone', 'create'])
-  @Description('Create a new zone (costs vary by size)')
+  @Description('Create a new zone (costs 111 XPL)')
+  @Permission('player')
   @Argument([
     { name: 'name', type: 'string', description: 'Zone name' },
-    { name: 'description', type: 'string', description: 'Zone description' },
-    { name: 'size', type: 'integer', description: 'Zone size in blocks (optional)', optional: true }
+    { name: 'description', type: 'string', description: 'Zone description' }
   ])
-  async createZone({ params, kv, api, log }: ScriptContext): Promise<void> {
+  async createZone({ params, kv, api, log, rcon }: ScriptContext): Promise<void> {
     const { sender, args } = params;
     const { name, description } = args;
-    const size = args.size || this.DEFAULT_ZONE_SIZE;
 
     try {
-      // Validate zone size
-      this.validateZoneSize(size);
-      const zoneCost = this.calculateZoneCost(size);
-
       // Check if player is a team leader
       const teamResult = await kv.get(['players', sender, 'team']);
       const teamId = teamResult.value;
@@ -196,15 +226,17 @@ export class Zones {
         throw new Error('You must be in a team to create a zone');
       }
 
-      if (!await this.isTeamLeaderOrOfficer(kv, sender, teamId)) {
-        throw new Error('Only team leaders and officers can create zones');
+      const teamDataResult = await kv.get(['teams', teamId]);
+      const teamData = teamDataResult.value;
+      if (!teamData || teamData.leader !== sender) {
+        throw new Error('Only team leaders can create zones');
       }
 
       // Check player balance
       const balanceResult = await kv.get(['plugins', 'economy', 'balances', sender]);
       const balance = balanceResult.value ? Number(balanceResult.value) : 0;
-      if (balance < zoneCost) {
-        throw new Error(`You need ${zoneCost} XPL to create a zone of size ${size}`);
+      if (balance < this.ZONE_COST) {
+        throw new Error(`You need ${this.ZONE_COST} XPL to create a zone`);
       }
 
       // Get player position
@@ -217,10 +249,8 @@ export class Zones {
         name,
         teamId,
         description,
-        positions: this.createPositions(position.x, position.y, position.z, size),
+        positions: this.createPositions(position.x, position.y, position.z),
         center: position,
-        size,
-        allowedPlayers: [],
         teleportEnabled: false,
         forSale: false,
         price: 0,
@@ -228,56 +258,42 @@ export class Zones {
         createdBy: sender
       };
 
-      // Get existing zones and check for overlap
+      // Check for overlapping zones
       const zonesResult = await kv.get(['zones']);
       const existingZones = zonesResult.value || [];
-
-      // Check for duplicate zone ID
-      if (existingZones.some(zone => zone.id === zoneId)) {
-        throw new Error('A zone with this name already exists');
-      }
-
-      // Check for overlapping zones
       const overlapping = existingZones.some(zone => this.isOverlapping(newZone, zone));
+
       if (overlapping) {
-        throw new Error('This zone overlaps with an existing zone or is too close to another zone');
+        throw new Error('This zone overlaps with an existing zone or is too close to another zone. Zones must have at least 1 block spacing between them.');
       }
 
-      // Add new zone to the list
-      const updatedZones = [...existingZones, newZone];
-
-      // Create zone and deduct XPL atomically
+      // Create zone and deduct XPL
       const result = await kv.atomic()
         .check(zonesResult)
         .mutate({
           type: 'sum',
           key: ['plugins', 'economy', 'balances', sender],
-          value: new Deno.KvU64(BigInt(balance - zoneCost))
+          value: new Deno.KvU64(BigInt(balance-this.ZONE_COST))
         })
-        .set(['zones'], updatedZones)  // Update the full zones list
-        .set(['zones', zoneId], newZone)  // Update the full zones list
+        .set(['zones', zoneId], newZone)
         .commit();
 
       if (!result.ok) {
         throw new Error('Failed to create zone');
       }
 
-      // Set up Leukocyte protection
-      await this.setupZoneProtection(api, newZone);
+      // Set up command blocks for zone protection
+      const coords = this.createSquareCoordinates(position);
+      await this.setupZoneProtection(rcon, coords, teamId);
 
-      // Get team data for notification
-      const teamDataResult = await kv.get(['teams', teamId]);
-      const teamData = teamDataResult.value;
+      // Display zone info
+      await this.createZoneDisplay(api, coords, name, description);
 
-      // Notify team members with size and cost information
+      // Notify team members
       const notificationMessage = JSON.stringify([
         { text: "New Team Zone Created!\n", color: "gold", bold: true },
         { text: `Name: `, color: "gray" },
         { text: name, color: teamData.color },
-        { text: "\nSize: ", color: "gray" },
-        { text: `${size}x${size}`, color: "aqua" },
-        { text: "\nCost: ", color: "gray" },
-        { text: `${zoneCost} XPL`, color: "yellow" },
         { text: "\nCreated by: ", color: "gray" },
         { text: sender, color: "green" }
       ]);
@@ -286,7 +302,7 @@ export class Zones {
         await api.tellraw(member, notificationMessage);
       }
 
-      log(`Player ${sender} created zone ${name} (size: ${size}) for team ${teamId}`);
+      log(`Player ${sender} created zone ${name} for team ${teamId}`);
 
     } catch (error) {
       log(`Error creating zone: ${error.message}`);
@@ -299,7 +315,7 @@ export class Zones {
 
   @Command(['zone', 'delete'])
   @Description('Delete a zone')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'zoneId', type: 'string', description: 'Zone ID to delete' }
   ])
@@ -317,30 +333,32 @@ export class Zones {
       }
 
       // Check if player is team leader
-      if (!await this.isTeamLeaderOrOfficer(kv, sender, zone.teamId)) {
-        throw new Error('Only team leaders and officers can delete zones');
+      const teamResult = await kv.get(['teams', zone.teamId]);
+      const team = teamResult.value;
+
+      if (!team || team.leader !== sender) {
+        throw new Error('Only the team leader can delete zones');
       }
 
-      // Remove Leukocyte protection
-      await this.removeZoneProtection(api, zoneId);
+      // Teleport player to zone center
+      await api.teleport(
+        sender,
+        zone.center.x.toString(),
+        zone.center.y.toString(),
+        zone.center.z.toString()
+      );
+
+      // Remove protection
+      const coords = this.createSquareCoordinates(zone.center);
+      await this.removeZoneProtection(api, coords);
 
       // Delete zone data
       await kv.delete(['zones', zoneId]);
 
-      // Get team data for notification
-      const teamResult = await kv.get(['teams', zone.teamId]);
-      const team = teamResult.value;
-
-      // Notify team members
-      const notificationMessage = JSON.stringify([
-        { text: "Zone Deleted\n", color: "gold", bold: true },
-        { text: `Zone "${zone.name}" has been deleted by `, color: "yellow" },
-        { text: sender, color: team.color }
-      ]);
-
-      for (const member of team.members) {
-        await api.tellraw(member, notificationMessage);
-      }
+      await api.tellraw(sender, JSON.stringify({
+        text: `Zone ${zone.name} has been deleted`,
+        color: "green"
+      }));
 
       log(`Player ${sender} deleted zone ${zone.name}`);
 
@@ -353,155 +371,22 @@ export class Zones {
     }
   }
 
-  @Command(['zone', 'allow'])
-  @Description('Allow a player to build in your zone')
-  // @Permission('player')
-  @Argument([
-    { name: 'zoneId', type: 'string', description: 'Zone ID' },
-    { name: 'player', type: 'player', description: 'Player to allow' }
-  ])
-  async allowPlayer({ params, kv, api, log }: ScriptContext): Promise<void> {
-    const { sender, args } = params;
-    const { zoneId, player } = args;
-
-    try {
-      // Get zone data
-      const zoneResult = await kv.get(['zones', zoneId]);
-      const zone = zoneResult.value as Zone;
-
-      if (!zone) {
-        throw new Error('Zone not found');
-      }
-
-      // Check if player has permission
-      if (!await this.isTeamLeaderOrOfficer(kv, sender, zone.teamId)) {
-        throw new Error('Only team leaders and officers can manage zone access');
-      }
-
-      if (zone.allowedPlayers.includes(player)) {
-        throw new Error('Player already has access to this zone');
-      }
-
-      // Update zone data and Leukocyte protection
-      zone.allowedPlayers.push(player);
-      await kv.set(['zones', zoneId], zone);
-      await this.updateZoneAccess(api, zone, player, true);
-
-      // Get team data for notifications
-      const teamResult = await kv.get(['teams', zone.teamId]);
-      const team = teamResult.value;
-
-      // Notify relevant players
-      await api.tellraw(sender, JSON.stringify({
-        text: `${player} has been granted access to zone ${zone.name}`,
-        color: team.color
-      }));
-
-      await api.tellraw(player, JSON.stringify([
-        { text: "Zone Access Granted\n", color: "gold", bold: true },
-        { text: "You now have access to zone ", color: "green" },
-        { text: zone.name, color: team.color },
-        { text: " owned by team ", color: "green" },
-        { text: team.name, color: team.color }
-      ]));
-
-      log(`${sender} granted ${player} access to zone ${zone.name}`);
-
-    } catch (error) {
-      log(`Error in zone allow: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
-    }
-  }
-
-  @Command(['zone', 'deny'])
-  @Description('Remove a player\'s permission to build in your zone')
-  // @Permission('player')
-  @Argument([
-    { name: 'zoneId', type: 'string', description: 'Zone ID' },
-    { name: 'player', type: 'player', description: 'Player to deny' }
-  ])
-  async denyPlayer({ params, kv, api, log }: ScriptContext): Promise<void> {
-    const { sender, args } = params;
-    const { zoneId, player } = args;
-
-    try {
-      // Get zone data
-      const zoneResult = await kv.get(['zones', zoneId]);
-      const zone = zoneResult.value as Zone;
-
-      if (!zone) {
-        throw new Error('Zone not found');
-      }
-
-      // Check if player has permission
-      if (!await this.isTeamLeaderOrOfficer(kv, sender, zone.teamId)) {
-        throw new Error('Only team leaders and officers can manage zone access');
-      }
-
-      // Get team data to check membership
-      const teamResult = await kv.get(['teams', zone.teamId]);
-      const team = teamResult.value;
-
-      if (team.members.includes(player)) {
-        throw new Error('Cannot deny access to team members');
-      }
-
-      if (!zone.allowedPlayers.includes(player)) {
-        throw new Error('Player does not have individual access to this zone');
-      }
-
-      // Update zone data and Leukocyte protection
-      zone.allowedPlayers = zone.allowedPlayers.filter(p => p !== player);
-      await kv.set(['zones', zoneId], zone);
-      await this.updateZoneAccess(api, zone, player, false);
-
-      // Notify relevant players
-      await api.tellraw(sender, JSON.stringify({
-        text: `${player}'s access to zone ${zone.name} has been revoked`,
-        color: team.color
-      }));
-
-      await api.tellraw(player, JSON.stringify([
-        { text: "Zone Access Revoked\n", color: "gold", bold: true },
-        { text: "Your access to zone ", color: "yellow" },
-        { text: zone.name, color: team.color },
-        { text: " has been revoked", color: "yellow" }
-      ]));
-
-      log(`${sender} revoked ${player}'s access to zone ${zone.name}`);
-
-    } catch (error) {
-      log(`Error in zone deny: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
-    }
-  }
-
   @Command(['zone', 'info'])
   @Description('Get information about the current zone')
-  // @Permission('player')
+  @Permission('player')
   async zoneInfo({ params, kv, api }: ScriptContext): Promise<void> {
     const { sender } = params;
 
     try {
       // Get player position
       const position = await api.getPlayerPosition(sender);
-      console.log(position)
+
       // Find zone at player's position
       const zonesResult = await kv.get(['zones']);
-
-      console.log(zonesResult.value)
       const zones = zonesResult.value || [];
 
-      const currentZone = zones.find(zone => {
-          console.log(zone)
-          this.isCoordinateInZone(position, zone)
-        }
+      const currentZone = zones.find(zone =>
+        this.isCoordinateInZone(position, zone)
       );
 
       if (!currentZone) {
@@ -517,8 +402,6 @@ export class Zones {
         { text: `${currentZone.name}\n`, color: team.color },
         { text: "Description: ", color: "gray" },
         { text: `${currentZone.description}\n`, color: "white" },
-        { text: "Size: ", color: "gray" },
-        { text: `${currentZone.size}x${currentZone.size}\n`, color: "aqua" },
         { text: "Team: ", color: "gray" },
         { text: `${team.name}\n`, color: team.color },
         { text: "Created by: ", color: "gray" },
@@ -528,11 +411,7 @@ export class Zones {
         currentZone.forSale ? [
           { text: "\nPrice: ", color: "gray" },
           { text: `${currentZone.price} XPL`, color: "gold" }
-        ] : [],
-        { text: "\nAllowed Players: ", color: "gray" },
-        { text: currentZone.allowedPlayers.length > 0
-            ? currentZone.allowedPlayers.join(', ')
-            : "None", color: "white" }
+        ] : []
       ]));
 
     } catch (error) {
@@ -545,7 +424,7 @@ export class Zones {
 
   @Command(['zone', 'list'])
   @Description('List all zones owned by your team')
-  // @Permission('player')
+  @Permission('player')
   async listZones({ params, kv, api }: ScriptContext): Promise<void> {
     const { sender } = params;
 
@@ -558,15 +437,9 @@ export class Zones {
         throw new Error('You are not in a team');
       }
 
-      // Get team data
-      const teamDataResult = await kv.get(['teams', teamId]);
-      const teamData = teamDataResult.value;
-
       // Get all zones
       const zonesResult = await kv.get(['zones']);
       const allZones = zonesResult.value || [];
-      console.log(zonesResult)
-      console.log(allZones)
 
       // Filter zones owned by team
       const teamZones = allZones.filter(zone => zone.teamId === teamId);
@@ -588,7 +461,6 @@ export class Zones {
       for (const zone of teamZones) {
         await api.tellraw(sender, JSON.stringify([
           { text: `\n${zone.name}`, color: "green", bold: true },
-          { text: ` (${zone.size}x${zone.size})`, color: "aqua" },
           { text: `\nDescription: ${zone.description}`, color: "white" },
           {
             text: "\n[Teleport]",
@@ -600,19 +472,6 @@ export class Zones {
             hoverEvent: {
               action: "show_text",
               value: "Click to teleport to zone"
-            }
-          },
-          { text: " " },
-          {
-            text: "[Info]",
-            color: "yellow",
-            clickEvent: {
-              action: "run_command",
-              value: `/zone info ${zone.id}`
-            },
-            hoverEvent: {
-              action: "show_text",
-              value: "Click for zone details"
             }
           }
         ]));
@@ -627,7 +486,7 @@ export class Zones {
 
   @Command(['zone', 'tp'])
   @Description('Teleport to a zone center')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'zoneId', type: 'string', description: 'Zone ID to teleport to' }
   ])
@@ -643,10 +502,10 @@ export class Zones {
         throw new Error('Zone not found');
       }
 
-      // Check if player can teleport to this zone
+      // Check if player is in the team
       const teamResult = await kv.get(['players', sender, 'team']);
-      if (teamResult.value !== zone.teamId && !zone.allowedPlayers.includes(sender)) {
-        throw new Error('You can only teleport to zones owned by your team or zones you have access to');
+      if (teamResult.value !== zone.teamId) {
+        throw new Error('You can only teleport to zones owned by your team');
       }
 
       const { x, y, z } = zone.center;
@@ -667,98 +526,9 @@ export class Zones {
     }
   }
 
-  @Command(['zone', 'costs'])
-  @Description('View zone costs for different sizes')
-  // @Permission('player')
-  async viewZoneCosts({ params, api }: ScriptContext): Promise<void> {
-    const { sender } = params;
-
-    const sizes = [32, 64, 128, 256, 512];
-    const costMessages = sizes.map(size => JSON.stringify([
-      { text: `${size}x${size}: `, color: "aqua" },
-      { text: `${this.calculateZoneCost(size)} XPL\n`, color: "yellow" }
-    ]));
-
-    await api.tellraw(sender, JSON.stringify({
-      text: "=== Zone Costs ===\n",
-      color: "gold",
-      bold: true
-    }));
-
-    for (const msg of costMessages) {
-      await api.tellraw(sender, msg);
-    }
-  }
-
-  @Socket('get_zones')
-  async getZones({ kv }: ScriptContext): Promise<any> {
-    try {
-      const zonesResult = await kv.get(['zones']);
-      return {
-        success: true,
-        data: zonesResult.value || []
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  @Socket('get_team_zones')
-  async getTeamZones({ params, kv }: ScriptContext): Promise<any> {
-    try {
-      const { teamId } = params;
-      const zonesResult = await kv.get(['zones']);
-      const zones = zonesResult.value || [];
-
-      return {
-        success: true,
-        data: zones.filter(zone => zone.teamId === teamId)
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  @Socket('get_zone_info')
-  async getZoneInfo({ params, kv }: ScriptContext): Promise<any> {
-    try {
-      const { zoneId } = params;
-      const zoneResult = await kv.get(['zones', zoneId]);
-
-      if (!zoneResult.value) {
-        return {
-          success: false,
-          error: 'Zone not found'
-        };
-      }
-
-      // Get team data for the zone
-      const teamResult = await kv.get(['teams', zoneResult.value.teamId]);
-
-      return {
-        success: true,
-        data: {
-          ...zoneResult.value,
-          team: teamResult.value
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
   @Command(['zone', 'modify'])
-  @Description('Modify zone settings')
-  // @Permission('player')
+  @Description('Modify zone settings (team leader only)')
+  @Permission('player')
   @Argument([
     { name: 'zoneId', type: 'string', description: 'Zone ID to modify' },
     { name: 'setting', type: 'string', description: 'Setting to modify (description/price)' },
@@ -776,9 +546,12 @@ export class Zones {
         throw new Error('Zone not found');
       }
 
-      // Check if player has permission
-      if (!await this.isTeamLeaderOrOfficer(kv, sender, zone.teamId)) {
-        throw new Error('Only team leaders and officers can modify zones');
+      // Check if player is team leader
+      const teamResult = await kv.get(['teams', zone.teamId]);
+      const team = teamResult.value;
+
+      if (!team || team.leader !== sender) {
+        throw new Error('Only the team leader can modify zones');
       }
 
       switch (setting.toLowerCase()) {
@@ -799,21 +572,16 @@ export class Zones {
 
       await kv.set(['zones', zoneId], zone);
 
-      // Get team data for notification
-      const teamResult = await kv.get(['teams', zone.teamId]);
-      const team = teamResult.value;
-
-      // Notify team members
-      const notificationMessage = JSON.stringify([
-        { text: "Zone Modified\n", color: "gold", bold: true },
-        { text: `${zone.name}: `, color: team.color },
-        { text: `${setting} updated by `, color: "yellow" },
-        { text: sender, color: "green" }
-      ]);
-
-      for (const member of team.members) {
-        await api.tellraw(member, notificationMessage);
+      // Update zone display if description changed
+      if (setting === 'description') {
+        const coords = this.createSquareCoordinates(zone.center);
+        await this.createZoneDisplay(api, coords, zone.name, zone.description);
       }
+
+      await api.tellraw(sender, JSON.stringify({
+        text: `Zone ${zone.name} has been updated`,
+        color: "green"
+      }));
 
       log(`Player ${sender} modified zone ${zone.name} ${setting}: ${value}`);
     } catch (error) {
@@ -825,112 +593,19 @@ export class Zones {
     }
   }
 
-  @Socket('check_zone_access')
-  async checkZoneAccess({ params, kv }: ScriptContext): Promise<any> {
+  @Socket('get_zones')
+  async getZones({ kv }: ScriptContext): Promise<any> {
     try {
-      const { playerId, zoneId } = params;
-
-      const zoneResult = await kv.get(['zones', zoneId]);
-      if (!zoneResult.value) {
-        return {
-          success: false,
-          error: 'Zone not found'
-        };
-      }
-
-      const zone = zoneResult.value as Zone;
-      const playerTeamResult = await kv.get(['players', playerId, 'team']);
-
-      const hasAccess =
-        zone.teamId === playerTeamResult.value ||
-        zone.allowedPlayers.includes(playerId);
-
+      const zonesResult = await kv.get(['zones']);
       return {
         success: true,
-        data: {
-          hasAccess,
-          isTeamZone: zone.teamId === playerTeamResult.value,
-          hasIndividualAccess: zone.allowedPlayers.includes(playerId)
-        }
+        data: zonesResult.value || []
       };
     } catch (error) {
       return {
         success: false,
         error: error.message
       };
-    }
-  }
-
-  @Command(['zone', 'scan'])
-  @Description('Scan nearby zones')
-  // @Permission('player')
-  async scanZones({ params, kv, api }: ScriptContext): Promise<void> {
-    const { sender } = params;
-
-    try {
-      // Get player position
-      const position = await api.getPlayerPosition(sender);
-      const SCAN_RADIUS = 256; // Blocks to scan
-
-      // Get all zones
-      const zonesResult = await kv.get(['zones']);
-      const allZones = zonesResult.value || [];
-
-      // Filter zones within radius
-      const nearbyZones = allZones.filter(zone => {
-        const dx = zone.center.x - position.x;
-        const dz = zone.center.z - position.z;
-        return Math.sqrt(dx * dx + dz * dz) <= SCAN_RADIUS;
-      });
-
-      if (nearbyZones.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
-          text: "No zones found within 256 blocks",
-          color: "yellow"
-        }));
-        return;
-      }
-
-      await api.tellraw(sender, JSON.stringify({
-        text: "=== Nearby Zones ===",
-        color: "gold",
-        bold: true
-      }));
-
-      for (const zone of nearbyZones) {
-        const teamResult = await kv.get(['teams', zone.teamId]);
-        const team = teamResult.value;
-        const distance = Math.round(Math.sqrt(
-          Math.pow(zone.center.x - position.x, 2) +
-          Math.pow(zone.center.z - position.z, 2)
-        ));
-
-        await api.tellraw(sender, JSON.stringify([
-          { text: `\n${zone.name}`, color: team.color, bold: true },
-          { text: ` (${distance} blocks away)`, color: "gray" },
-          { text: `\nTeam: `, color: "gray" },
-          { text: team.name, color: team.color },
-          { text: `\nSize: `, color: "gray" },
-          { text: `${zone.size}x${zone.size}`, color: "aqua" },
-          {
-            text: "\n[Teleport]",
-            color: "aqua",
-            clickEvent: {
-              action: "run_command",
-              value: `/zone tp ${zone.id}`
-            },
-            hoverEvent: {
-              action: "show_text",
-              value: "Click to teleport"
-            }
-          }
-        ]));
-      }
-    } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
     }
   }
 }

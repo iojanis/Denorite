@@ -2,6 +2,7 @@ import type { Api } from "./types.d.ts";
 import {AuthService} from "./core/AuthService.ts";
 
 import { PlayerManager } from "./core/PlayerManager.ts";
+import {RconClient} from "./core/RconClient.ts";
 
 export interface ScriptContext {
   params: Record<string, unknown>;
@@ -31,6 +32,7 @@ export interface ScriptContext {
   players: PlayerData[];
   isOnline: (playerName: string) => boolean;
   isOperator: (playerName: string) => boolean;
+  rcon: RconClient
 }
 
 export interface PlayerData {

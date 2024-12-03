@@ -15,8 +15,10 @@
 
 <template>
   <Button>
-  {{test}} World
+  Hello World
   </Button>
+  {{enchanted.isSynced}}
+  {{enchanted.username}}
 </template>
 
 <script setup lang="ts">

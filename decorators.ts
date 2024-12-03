@@ -105,16 +105,6 @@ export function Event(eventName: string) {
   };
 }
 
-// export function Command(commandPath: string[]) {
-//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-//     setMetadata(context.metadata, `command:${context.name.toString()}`, { path: commandPath });
-//     return function (this: any, ...args: unknown[]) {
-//       // Here you can add command-specific logic
-//       return originalMethod.apply(this, args);
-//     };
-//   };
-// }
-
 export function Argument(configs: { name: string; type: string; description: string }[]) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     setMetadata(context.metadata, `arguments:${context.name.toString()}`, configs);
@@ -124,27 +114,6 @@ export function Argument(configs: { name: string; type: string; description: str
     };
   };
 }
-
-// export function Permission(permission: string) {
-//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-//     setMetadata(context.metadata, `permission:${context.name.toString()}`, permission);
-//     return function (this: any, ...args: unknown[]) {
-//       // Here you can add permission-specific logic
-//       return originalMethod.apply(this, args);
-//     };
-//   };
-// }
-
-// // todo: if a method should only be executed if sender is online in a location (game / web | empty (both)) (can be combined with socket / command)
-// export function Online(location: string) {
-//   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-//     setMetadata(context.metadata, `online:${context.name.toString()}`, location);
-//     return function (this: any, ...args: unknown[]) {
-//       // Here you can add permission-specific logic
-//       return originalMethod.apply(this, args);
-//     };
-//   };
-// }
 
 // todo: limit execution rate for a method
 export function Limit(limit: string) {
@@ -178,13 +147,35 @@ export function Description(description: string) {
   };
 }
 
-export function Schedule(cronExpression: string) {
+// todo: cron jobs
+export function Cron(cronExpression: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     setMetadata(context.metadata, `schedule:${context.name.toString()}`, cronExpression);
     return function (this: any, ...args: unknown[]) {
       // Here you can add schedule-specific logic if needed
       return originalMethod.apply(this, args);
     };
+  };
+}
+
+export interface WatchConfig {
+  keys: string[][];      // Array of key paths to watch
+  debounce?: number;     // Optional debounce time in ms
+  initial?: boolean;     // Whether to trigger on initial load
+}
+
+export function Watch(config: WatchConfig) {
+  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+    setMetadata(
+      context.metadata,
+      `watch:${context.name.toString()}`,
+      {
+        keys: config.keys,
+        debounce: config.debounce || 0,
+        initial: config.initial || false
+      }
+    );
+    return originalMethod;
   };
 }
 

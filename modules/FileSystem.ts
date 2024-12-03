@@ -10,7 +10,7 @@ interface SenderState {
 
 @Module({
   name: 'FileSystem',
-  version: '1.0.0',
+  version: '1.0.1',
   description: 'Unix-like file system commands'
 })
 export class FileSystem {
@@ -84,7 +84,7 @@ export class FileSystem {
     return `${months[date.getMonth()]} ${date.getDate().toString().padStart(2)} ${date.getHours()}:${date.getMinutes()}`;
   }
 
-  @Command(['fs', 'cd'])
+  @Command(['cd'])
   @Description('Change current directory')
   @Permission('operator')
   @Argument([
@@ -120,7 +120,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'ls'])
+  @Command(['ls'])
   @Description('List directory contents')
   @Permission('operator')
   @Argument([
@@ -189,7 +189,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'cat'])
+  @Command(['cat'])
   @Description('Display file contents')
   @Permission('operator')
   @Argument([
@@ -218,7 +218,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'append'])
+  @Command(['append'])
   @Description('Append text to file')
   @Permission('operator')
   @Argument([
@@ -248,7 +248,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'mv'])
+  @Command(['mv'])
   @Description('Move/rename file or directory')
   @Permission('operator')
   @Argument([
@@ -281,7 +281,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'cp'])
+  @Command(['cp'])
   @Description('Copy file or directory')
   @Permission('operator')
   @Argument([
@@ -314,7 +314,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'rm'])
+  @Command(['rm'])
   @Description('Remove file or directory')
   @Permission('operator')
   @Argument([
@@ -345,7 +345,7 @@ export class FileSystem {
     }
   }
 
-  @Command(['fs', 'pwd'])
+  @Command(['pwd'])
   @Description('Print working directory')
   @Permission('operator')
   async pwd({ params, api, log, kv }: ScriptContext): Promise<void> {

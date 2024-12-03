@@ -1,6 +1,6 @@
 import type { ScriptContext } from "../types.ts";
 import { Logger } from "./logger.ts";
-import { getMetadata, listMetadata } from "../decorators.ts";
+import {getMetadata, listMetadata, WatchConfig} from "../decorators.ts";
 
 interface ModuleMetadata {
   name: string;
@@ -31,6 +31,17 @@ interface CommandRegistrationData extends CommandMetadata {
   arguments: string[];
 }
 
+interface WatchRegistration {
+  moduleName: string;
+  methodName: string;
+  config: {
+    keys: string[][];
+    debounce: number;
+    initial: boolean;
+  };
+  cleanup?: () => void;
+}
+
 export class ScriptInterpreter {
   private modules: Map<string, { instance: ModuleInstance; metadata: ModuleMetadata }> = new Map();
   private events: Map<string, DecoratedMethod[]> = new Map();
@@ -38,6 +49,8 @@ export class ScriptInterpreter {
   private sockets: Map<string, DecoratedMethod> = new Map();
   private commandRegistrations: Map<string, CommandRegistrationData> = new Map();
   private readonly contextFactory: (params: Record<string, unknown>) => ScriptContext;
+  private watches: Map<string, WatchRegistration> = new Map();
+  private pendingDebounces: Map<string, number> = new Map();
   private logger: Logger;
 
   constructor(logger: Logger, contextFactory: (params: Record<string, unknown>) => ScriptContext) {
@@ -130,6 +143,85 @@ export class ScriptInterpreter {
       methodName,
       arguments: allMetadata[`arguments:${methodName}`] || []
     });
+  }
+
+  private async startWatcher(registration: WatchRegistration): Promise<void> {
+    const { moduleName, methodName, config } = registration;
+    const kv = this.contextFactory({}).kv as Deno.Kv;
+
+    // Create reader for the watch stream
+    const reader = kv.watch(config.keys).getReader();
+
+    // Store cleanup function
+    registration.cleanup = () => {
+      reader.cancel();
+    };
+
+    // Handle initial values if requested
+    if (config.initial) {
+      for (const keyPath of config.keys) {
+        const initialValue = await kv.get(keyPath);
+        await this.handleWatchUpdate(registration, [{
+          key: keyPath,
+          value: initialValue.value,
+          versionstamp: initialValue.versionstamp
+        }]);
+      }
+    }
+
+    // Start watching for changes
+    (async () => {
+      try {
+        while (true) {
+          const { value: entries, done } = await reader.read();
+          if (done) break;
+
+          await this.handleWatchUpdate(registration, entries);
+        }
+      } catch (error) {
+        this.logger.error(
+          `Watch error for ${moduleName}.${methodName}: ${error.message}`
+        );
+      }
+    })();
+  }
+
+  private async handleWatchUpdate(
+    registration: WatchRegistration,
+    entries: Array<{ key: string[]; value: unknown; versionstamp: string }>
+  ): Promise<void> {
+    const { moduleName, methodName, config } = registration;
+    const moduleData = this.modules.get(moduleName);
+    if (!moduleData) return;
+
+    const { instance: moduleInstance } = moduleData;
+    const watchMethod = moduleInstance[methodName];
+    if (typeof watchMethod !== 'function') return;
+
+    const context = this.contextFactory({
+      entries,
+      timestamp: Date.now()
+    });
+
+    // Handle debouncing if configured
+    if (config.debounce > 0) {
+      const debounceKey = `${moduleName}:${methodName}`;
+      const existingTimeout = this.pendingDebounces.get(debounceKey);
+
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+
+      const timeout = setTimeout(() => {
+        watchMethod.call(moduleInstance, context);
+        this.pendingDebounces.delete(debounceKey);
+      }, config.debounce);
+
+      this.pendingDebounces.set(debounceKey, timeout);
+    } else {
+      // Execute immediately if no debounce
+      await watchMethod.call(moduleInstance, context);
+    }
   }
 
   async loadModule(modulePath: string, moduleImport: any): Promise<void> {
@@ -228,6 +320,22 @@ export class ScriptInterpreter {
         }
       }
 
+      // Clean up watches
+      for (const [registrationKey, registration] of this.watches.entries()) {
+        if (registration.moduleName === moduleName) {
+          // Cancel the watcher
+          registration.cleanup?.();
+          this.watches.delete(registrationKey);
+
+          // Clear any pending debounced calls
+          const debounceTimeout = this.pendingDebounces.get(registrationKey);
+          if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+            this.pendingDebounces.delete(registrationKey);
+          }
+        }
+      }
+
       // Remove module from registry
       this.modules.delete(moduleName);
       this.logger.info(`Successfully unloaded module: ${moduleName}`);
@@ -268,6 +376,21 @@ export class ScriptInterpreter {
       } else if (key.startsWith('socket:')) {
         const socketEventName = (value as { name: string }).name;
         this.addSocketHandler(socketEventName, moduleMetadata.name, key.split(':')[1]);
+      } else if (key.startsWith('watch:')) {
+        const watchConfig = value as WatchConfig;
+        const methodName = key.split(':')[1];
+
+        const registration: WatchRegistration = {
+          moduleName: moduleMetadata.name,
+          methodName,
+          config: watchConfig
+        };
+
+        const registrationKey = `${moduleMetadata.name}:${methodName}`;
+        this.watches.set(registrationKey, registration);
+
+        // Start the watcher
+        await this.startWatcher(registration);
       }
     }
   }

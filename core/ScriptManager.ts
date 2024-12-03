@@ -12,6 +12,9 @@ import { RateLimiter } from "./RateLimiter.ts";
 import {createDisplayAPI} from "../api/displayAPI.ts";
 import { ModuleWatcher } from "./ModuleWatcher.ts";
 import { PlayerManager } from "./PlayerManager.ts";
+import { RconManager } from "./RconManager.ts";
+import {RconClient} from "./RconClient.ts";
+import {createBlueMapAPI} from "../api/bluemapAPI.ts";
 
 interface CommandMetadata {
   name: string;
@@ -33,6 +36,7 @@ export class ScriptManager {
   private pendingResponses: Map<string, (value: unknown) => void> = new Map();
   private commandsToRegister: Map<string, CommandMetadata> = new Map();
   public playerManager: PlayerManager;
+  private rconManager: RconManager;
   private basePath: string;
   moduleWatcher: ModuleWatcher;
 
@@ -47,7 +51,7 @@ export class ScriptManager {
     this.logger = logger;
     this.auth = auth;
     this.basePath = dirname(fromFileUrl(import.meta.url));
-    this.playerManager = new PlayerManager(logger);
+    this.playerManager = new PlayerManager(logger, kv);
 
     this.moduleWatcher = new ModuleWatcher(
       this,
@@ -59,6 +63,13 @@ export class ScriptManager {
     this.interpreter = new ScriptInterpreter(
       this.logger,
       this.createContext.bind(this)
+    );
+
+    this.rconManager = new RconManager(
+      this.logger,
+      this.auth,
+      "localhost",
+      25575
     );
   }
 
@@ -215,7 +226,7 @@ export class ScriptManager {
     this.playerManager = playerManager;
   }
 
-  private createContext(params: Record<string, unknown>): ScriptContext {
+  private createContext(params: Record<string, unknown>, socket?: WebSocket): ScriptContext {
     const minecraftAPI = createMinecraftAPI(
       this.sendToMinecraft.bind(this),
       this.logger.info.bind(this.logger)
@@ -227,19 +238,36 @@ export class ScriptManager {
       this.kv.kv
     );
 
+    const bluemapAPI = createBlueMapAPI(
+      this.sendToMinecraft.bind(this),
+      this.logger.info.bind(this.logger)
+    );
+
+    // Get RCON client if available for this socket
+    let rconClient: RconClient | undefined;
+    try {
+      const socketId = "0";
+      const connection = this.rconManager.getConnection(socketId);
+      if (connection) {
+        rconClient = connection.client;
+      }
+    } catch (error) {
+      this.logger.debug(`No RCON client available for socket: ${error.message}`);
+    }
+
     return {
       params,
       kv: this.kv.kv as Deno.Kv,
-      sendToMinecraft: this.sendToMinecraft.bind(this),
-      sendToPlayer: this.sendToPlayer.bind(this),
-      broadcastPlayers: this.broadcastPlayers.bind(this),
-      messagePlayer: this.messagePlayer.bind(this),
-      log: this.logger.debug.bind(this.logger),
+
+      rcon: rconClient,
       api: {
         ...minecraftAPI,
         executeCommand: async (command: string) => {
           return await this.executeCommand(command);
         },
+        execute: async (command: string) => {
+          return await this.executeCommand(command);
+        }
       },
       display: {
         ...displayApi,
@@ -248,11 +276,67 @@ export class ScriptManager {
         },
       },
       auth: this.auth,
+
+      bluemap: bluemapAPI,
+
       playerManager: this.playerManager,
-      players: this.playerManager.getAllPlayers(),
-      isOnline: (playerName: string) => this.playerManager.isOnline(playerName),
-      isOperator: (playerName: string) => this.playerManager.isOperator(playerName),
-      executeModuleScript: this.executeModuleScript.bind(this),
+
+      // Player management and messaging
+      players: {
+        getAll: () => this.playerManager.getAllPlayers(),
+        isOnline: (playerName: string) => this.playerManager.isOnline(playerName),
+        isOperator: (playerName: string) => this.playerManager.isOperator(playerName),
+        sendWebSocket: (playerId: string, data: unknown) => this.sendToPlayer(playerId, data),
+        broadcastWebSocket: (data: unknown) => this.broadcastPlayers(data),
+        sendGameMessage: async (playerId: string, message: string, options = {}) => {
+          const {
+            color = 'white',
+            bold = false,
+            italic = false,
+            underlined = false,
+            sound = 'entity.experience_orb.pickup'
+          } = options;
+
+          // Send WebSocket message for UI
+          this.sendToPlayer(playerId, {
+            type: 'chat_message',
+            message,
+            timestamp: Date.now(),
+            metadata: { color, bold, italic, underlined }
+          });
+
+          // Send in-game message
+          const tellrawCommand = `tellraw ${playerId} {"text":"${message}","color":"${color}"${
+            bold ? ',"bold":true' : ''
+          }${italic ? ',"italic":true' : ''
+          }${underlined ? ',"underlined":true' : ''
+          }}`;
+
+          // Play sound if specified
+          if (sound) {
+            await this.executeCommand(`execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`);
+          }
+
+          await this.executeCommand(tellrawCommand);
+        }
+      },
+
+      // Module execution
+      modules: {
+        execute: this.executeModuleScript.bind(this)
+      },
+
+      //to be renamed and/or removed
+      sendToMinecraft: this.sendToMinecraft.bind(this),
+      sendToPlayer: this.sendToPlayer.bind(this),
+      broadcastPlayers: this.broadcastPlayers.bind(this),
+      messagePlayer: this.messagePlayer.bind(this),
+
+      log: this.logger.debug.bind(this.logger),
+      debug: this.logger.debug.bind(this.logger),
+      info: this.logger.info.bind(this.logger),
+      warn: this.logger.warn.bind(this.logger),
+      error: this.logger.error.bind(this.logger),
     };
   }
 
@@ -260,20 +344,48 @@ export class ScriptManager {
     return await this.interpreter.executeModuleScript(moduleName, methodName, params);
   }
 
-  // WebSocket management methods
-  addMinecraftSocket(socket: WebSocket): void {
-    this.minecraftSockets.add(socket);
 
-    if (socket.readyState === WebSocket.OPEN) {
-      this.registerAllCommands().catch(error => {
-        this.logger.error(`Error registering commands after connection: ${error.message}`);
+  addMinecraftSocket(socket: WebSocket, req: Request): void {
+    try {
+      // Extract token from URL query parameters
+      const authHeader = req.headers.get("Authorization");
+
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        this.logger.error("No valid Authorization header found");
+        return false;
+      }
+
+      const token = authHeader.split(" ")[1];
+
+      if (!token) {
+        this.logger.error('No token provided in WebSocket connection');
+        socket.close(1008, 'No authentication token provided');
+        return;
+      }
+
+      // Add socket to set
+      this.minecraftSockets.add(socket);
+
+      // Initialize RCON connection
+      this.rconManager.createConnection(socket, token).catch(error => {
+        this.logger.error(`Failed to create RCON connection: ${error.message}`);
+        // Don't close the socket - RCON is optional
       });
-    } else {
-      socket.addEventListener('open', () => {
+
+      if (socket.readyState === WebSocket.OPEN) {
         this.registerAllCommands().catch(error => {
           this.logger.error(`Error registering commands after connection: ${error.message}`);
         });
-      });
+      } else {
+        socket.addEventListener('open', () => {
+          this.registerAllCommands().catch(error => {
+            this.logger.error(`Error registering commands after connection: ${error.message}`);
+          });
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error adding Minecraft socket: ${error.message}`);
+      socket.close(1011, 'Internal server error');
     }
   }
 
@@ -297,14 +409,23 @@ export class ScriptManager {
     this.runnerSockets.delete(runnerId);
   }
 
+  private getHealthySocket(): WebSocket | null {
+    return Array.from(this.minecraftSockets)
+      .find(socket =>
+        socket.readyState === WebSocket.OPEN &&
+        socket.bufferedAmount === 0
+      ) || null;
+  }
+
   private async sendToMinecraft(data: unknown): Promise<unknown> {
-    const COMMAND_TIMEOUT = 5000;
-    // const COMMAND_TIMEOUT = await this.config.get('COMMAND_TIMEOUT') as number;
+    // Use a longer timeout for registration commands
+    const baseTimeout = await this.config.get('COMMAND_TIMEOUT') as number || 5000;
+    const timeout = baseTimeout * 3;
 
     return new Promise((resolve, reject) => {
-      const openSockets = Array.from(this.minecraftSockets).filter(socket => socket.readyState === WebSocket.OPEN);
-      if (openSockets.length === 0) {
-        reject(new Error('No open Minecraft WebSocket connections available'));
+      const socket = this.getHealthySocket();
+      if (!socket) {
+        reject(new Error('No healthy Minecraft WebSocket connections available'));
         return;
       }
 
@@ -314,18 +435,24 @@ export class ScriptManager {
         ...(data as Record<string, unknown>)
       };
 
-      this.pendingResponses.set(messageId, resolve);
+      const timeoutId = setTimeout(() => {
+        this.pendingResponses.delete(messageId);
+        reject(new Error(`Command response timed out: ${JSON.stringify(message)}`));
+      }, timeout);
 
-      for (const socket of openSockets) {
+      this.pendingResponses.set(messageId, (response: unknown) => {
+        clearTimeout(timeoutId);
+        this.pendingResponses.delete(messageId);
+        resolve(response);
+      });
+
+      try {
         socket.send(JSON.stringify(message));
+      } catch (error) {
+        clearTimeout(timeoutId);
+        this.pendingResponses.delete(messageId);
+        reject(error);
       }
-
-      setTimeout(() => {
-        if (this.pendingResponses.has(messageId)) {
-          this.pendingResponses.delete(messageId);
-          reject(new Error(`Command timed out: ${JSON.stringify(message)}`));
-        }
-      }, COMMAND_TIMEOUT);
     });
   }
 
@@ -359,7 +486,7 @@ export class ScriptManager {
     return this.pendingResponses.has(id);
   }
 
-  resolvePendingResponse(id: string, data: unknown): void {
+  async resolvePendingResponse(id: string, data: unknown): Promise<void> {
     const resolver = this.pendingResponses.get(id);
     if (resolver) {
       resolver(data);
@@ -383,7 +510,7 @@ export class ScriptManager {
       case 'register_command':
         return { result: await this.registerCommand(data.data as CommandMetadata) };
       default:
-        this.logger.warn(`Unknown message type: ${data.type}`);
+        this.logger.warn(`Unknown message type: ${JSON.stringify(data)}`);
         return { error: `Unknown message type: ${data.type}` };
     }
   }

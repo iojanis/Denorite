@@ -3,6 +3,7 @@
 
 import { ConfigManager } from "./core/ConfigManager.ts";
 import { AuthService } from "./core/AuthService.ts";
+import {PlayerManager} from "./core/PlayerManager.ts";
 
 interface RateLimitRule {
   tokensPerInterval: number;
@@ -168,58 +169,127 @@ interface Api {
   getPlayerLastDeathLocation(player: string): Promise<{ x: number, y: number, z: number, dimension: string } | null>;
 }
 
+interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface Color {
+  r: number;
+  g: number;
+  b: number;
+  a?: number;
+}
+
+interface MarkerBase {
+  label: string;
+  position?: Vector3;
+  maxDistance?: number;
+  minDistance?: number;
+}
+
+interface MarkerSetOptions {
+  label?: string;
+  toggleable?: boolean;
+  defaultHidden?: boolean;
+  sorting?: number;
+}
+
+interface POIMarkerOptions extends MarkerBase {
+  icon?: string;
+}
+
+interface HTMLMarkerOptions extends MarkerBase {
+  html: string;
+}
+
+interface LineMarkerOptions extends MarkerBase {
+  line: Vector3[];
+  lineWidth?: number;
+  lineColor?: Color;
+}
+
+interface ShapeMarkerOptions extends MarkerBase {
+  shape: Vector3[];
+  shapeY: number;
+  lineWidth?: number;
+  lineColor?: Color;
+  fillColor?: Color;
+}
+
+interface ExtrudeMarkerOptions extends MarkerBase {
+  shape: Vector3[];
+  shapeMinY: number;
+  shapeMaxY: number;
+  lineWidth?: number;
+  lineColor?: Color;
+  fillColor?: Color;
+}
+
 export interface ScriptContext {
-  params: any;
+  params: Record<string, unknown>;
   kv: Deno.Kv;
-  sendToMinecraft: (data: any) => Promise<any>;
-  sendToPlayer: (playerId: string, data: any) => void;
+  sendToMinecraft: (data: unknown) => Promise<unknown>;
+  sendToPlayer: (playerId: string, data: unknown) => void;
+  broadcastPlayers: (data: unknown) => void;
+  messagePlayer: (playerId: string, message: string, options?: {
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underlined?: boolean;
+    sound?: string;
+  }) => Promise<void>;
   log: (message: string) => void;
-  api: any; // Replace with a more specific type if available
-  auth: AuthService;
-  config: ConfigManager;
-  executeModuleScript: (moduleName: string, methodName: string, params: any) => Promise<any>;
-}
-
-export interface WatcherScriptContext {
-  changedKey: Deno.KvKey;
-  newValue: unknown;
-  kv: Deno.Kv;
-  log: (message: string) => void;
-  api: any; // Replace with a more specific type if available
-  auth: AuthService;
-  config: ConfigManager;
-  executeModuleScript: (moduleName: string, methodName: string, params: any) => Promise<any>;
-}
-
-export interface EnchantmentContext {
-  // Add properties as needed
-}
-
-export interface EventContext {
-  params: {
-    playerId: string;
-    playerName: string;
+  api: {
+    executeCommand: (command: string) => Promise<unknown>;
     [key: string]: any;
   };
-  kv: Deno.Kv;
-  log: (message: string) => void;
-}
+  bluemap: {
+    // Marker Set Management
+    createMarkerSet(id: string, options?: MarkerSetOptions): Promise<unknown>;
+    removeMarkerSet(id: string): Promise<unknown>;
+    listMarkerSets(): Promise<unknown>;
 
-export interface CommandContext {
-  sender: string;
-  executeCommand: (command: string) => Promise<void>;
-}
+    // Marker Management
+    addMarker(markerSet: string, id: string, type: string, data: unknown): Promise<unknown>;
+    removeMarker(markerSet: string, id: string): Promise<unknown>;
 
-export interface SocketContext {
-  params: {
-    playerId: string;
+    // Helper Methods
+    addPOI(set: string, id: string, options: POIMarkerOptions): Promise<unknown>;
+    addHTML(set: string, id: string, options: HTMLMarkerOptions): Promise<unknown>;
+    addLine(set: string, id: string, options: LineMarkerOptions): Promise<unknown>;
+    addShape(set: string, id: string, options: ShapeMarkerOptions): Promise<unknown>;
+    addExtrude(set: string, id: string, options: ExtrudeMarkerOptions): Promise<unknown>;
+  };
+  display: {
+    executeCommand: (command: string) => Promise<unknown>;
     [key: string]: any;
   };
-  kv: Deno.Kv;
-  log: (message: string) => void;
-  sendToPlayer: (event: string, data: any) => void;
+  auth: any;
+  executeModuleScript: (moduleName: string, methodName: string, params: Record<string, unknown>) => Promise<unknown>;
+  playerManager: PlayerManager;
+  players: PlayerData[];
+  isOnline: (playerName: string) => boolean;
+  isOperator: (playerName: string) => boolean;
 }
 
+export interface PlayerData {
+  name: string;
+  id: string;
+  role: 'guest' | 'player' | 'operator';
+  joinTime: string;
+  location?: {
+    x: number;
+    y: number;
+    z: number;
+    dimension: string;
+  };
+  clientInfo?: {
+    ip: string;
+    version: string;
+  };
+}
 
 export type { EventData, ScriptParams, MinecraftCommand, SendToMinecraft, LogFunction, Api, AuthContext };
 

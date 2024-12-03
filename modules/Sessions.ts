@@ -30,7 +30,7 @@ interface PlayerStats {
 
 @Module({
   name: 'Sessions',
-  version: '1.1.1',
+  version: '1.1.2',
   // description: 'Advanced session management with secure tickets'
 })
 export class Sessions {
@@ -79,7 +79,7 @@ export class Sessions {
         color: "white"
       },
       {
-        text: "████-████",  // Visible placeholder
+        text: "█████",  // Visible placeholder
         color: "green",
         obfuscated: true,
         hoverEvent: {
@@ -125,6 +125,8 @@ export class Sessions {
     try {
       const now = new Date().toISOString();
       log(`Player joined: ${playerName} (ID: ${playerId})`);
+
+      // await rcon.executeCommand('say hi')
 
       // Store player ID/name mappings atomically
       const mappingResult = await kv.atomic()

@@ -9,8 +9,8 @@ interface ChatMessage {
 }
 
 @Module({
-  name: 'Chat',
-  version: '1.0.0'
+  name: 'ChatHelper',
+  version: '1.0.1'
 })
 export class ChatModule {
   // Handle player join event

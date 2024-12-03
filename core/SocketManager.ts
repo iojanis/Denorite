@@ -56,7 +56,7 @@ export class SocketManager {
       const clientIp = this.getClientIp(conInfo);
 
       const isAuthenticated = await this.verifyDenoriteToken(req);
-      console.log(clientIp)
+      // console.log(clientIp)
 
       const rateLimitResult = await this.rateLimiter.handleMinecraftServerRateLimit(
         clientIp.hostname as unknown as string,
@@ -116,7 +116,7 @@ export class SocketManager {
       this.logger.debug("New Denorite WebSocket connection established");
 
       // Add socket to script manager before emitting event
-      this.scriptManager.addMinecraftSocket(socket);
+      this.scriptManager.addMinecraftSocket(socket, req);
 
       // Emit connection event that can be handled by any module listening for "denorite_connected"
       await this.scriptManager.handleEvent("denorite_connected", {
@@ -264,7 +264,7 @@ export class SocketManager {
                 message: 'Logged in as ' + playerName
               }));
 
-              this.sendServerInfo(socket, userRole);
+              await this.sendServerInfo(socket, userRole);
             } else {
               socket.send(JSON.stringify({
                 type: 'auth_failed',
@@ -326,11 +326,15 @@ export class SocketManager {
         }
       } catch (error: any) {
         this.logger.error(`Error processing player WebSocket message (Socket ID: ${socketId}): ${error.message}`);
-        socket.send(JSON.stringify({
-          type: 'error',
-          socketId: socketId,
-          message: error.message
-        }));
+        try {
+          socket.send(JSON.stringify({
+            type: 'error',
+            socketId: socketId,
+            message: error.message
+          }));
+        } catch (error: any) {
+          this.logger.error(error.message)
+        }
       }
     };
 
@@ -419,7 +423,7 @@ export class SocketManager {
       }
 
       if (data.id && this.scriptManager.hasPendingResponse(data.id)) {
-        this.scriptManager.resolvePendingResponse(data.id, data);
+        await this.scriptManager.resolvePendingResponse(data.id, data);
         return;
       }
 

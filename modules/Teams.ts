@@ -35,6 +35,10 @@ export class Teams {
       .replace(/(^_|_$)/g, '');
   }
 
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private async getPlayerTeam(kv: any, playerName: string): Promise<string | null> {
     const result = await kv.get(['players', playerName, 'team']);
     return result.value;
@@ -135,6 +139,8 @@ export class Teams {
     const { playerName } = params;
 
     try {
+      await this.delay(1000);
+
       await this.processQueuedOperations(kv, api, playerName);
 
       const teamId = await this.getPlayerTeam(kv, playerName);

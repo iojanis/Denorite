@@ -14,21 +14,22 @@ export class SocketManager {
   private logger: Logger;
   private auth: AuthService;
   private rateLimiter!: RateLimiter;
-  private playerManager: PlayerManager;
+  private playerManager!: PlayerManager;
 
   constructor(
     config: ConfigManager,
     scriptManager: ScriptManager,
     logger: Logger,
-    auth: AuthService
+    auth: AuthService,
+    rateLimiter: RateLimiter
   ) {
     this.config = config;
     this.scriptManager = scriptManager;
     this.logger = logger;
     this.auth = auth;
+    this.rateLimiter = rateLimiter;
 
     if (!this.scriptManager.kv) return
-    this.rateLimiter = new RateLimiter(this.scriptManager.kv.kv);
     this.playerManager = new PlayerManager(logger, scriptManager.kv);
 
     this.rateLimiter.setMethodCost('custom_command_executed', 5);
@@ -362,8 +363,15 @@ export class SocketManager {
       // Load apps configuration from KV
       const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
 
-      // Get available commands based on permission level
-      const commands = this.scriptManager.getCommandsByPermission(permission);
+      let commands = this.scriptManager.getCommandsByPermission(permission);
+
+      if (permission === 'operator') {
+        commands = [
+          ...commands, // operator commands
+          ...this.scriptManager.getCommandsByPermission('player'), // player commands
+          ...this.scriptManager.getCommandsByPermission('guest')   // guest commands
+        ];
+      }
 
       // console.dir(commands)
 
@@ -399,14 +407,19 @@ export class SocketManager {
         // Handle core events first
         if (data.eventType === "player_joined") {
           await this.handlePlayerJoined(data.data);
+          await this.scriptManager.handleEvent(data.eventType, data.data);
+          return;
         }
 
         if (data.eventType === "player_left") {
           await this.handlePlayerLeft(data.data);
+          await this.scriptManager.handleEvent(data.eventType, data.data);
+          return;
         }
 
         if (data.eventType === "custom_command_executed") {
-          await this.scriptManager.handleCommand(
+          // Commands can run in parallel - don't await them
+          this.scriptManager.handleCommand(
             data.data.command,
             data.data.subcommand,
             data.data.arguments,
@@ -418,6 +431,7 @@ export class SocketManager {
           return;
         }
 
+        // All other events need to be processed
         await this.scriptManager.handleEvent(data.eventType, data.data);
         return;
       }

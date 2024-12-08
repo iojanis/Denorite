@@ -74,7 +74,8 @@ async function initializeModules() {
     // Check if modules directory is empty
     const dirEntries = Array.from(Deno.readDirSync(modulesDir));
 
-    if (dirEntries.length === 0) {
+    // if (dirEntries.length === 0) {
+    if (true) {
       console.log("Modules directory is empty. Copying original modules...");
 
       // Copy contents from original modules backup

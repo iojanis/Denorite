@@ -9,6 +9,7 @@ import { AuthService } from "./core/AuthService.ts";
 import { ScriptManager } from "./core/ScriptManager.ts";
 import { SocketManager } from "./core/SocketManager.ts";
 import {printColoredPotion, printHeader} from "./core/DragonsBreath.ts";
+import {RateLimiter} from "./core/RateLimiter.ts";
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -56,11 +57,12 @@ async function main() {
   const isRunner = Deno.args.includes("--runner");
   if (isRunner) printHeader()
 
-
   const logger = new Logger();
 
   const kvManager = new KvManager(logger);
   await kvManager.init();
+
+  const rateLimiter = new RateLimiter(kvManager.kv);
 
   const configManager = new ConfigManager(kvManager, logger);
   await configManager.init(DEFAULT_CONFIG);
@@ -71,12 +73,12 @@ async function main() {
 
   const authService = new AuthService(configManager, kvManager, logger, jwtSecret, denoriteSecret);
 
-  const scriptManager = new ScriptManager(configManager, kvManager, logger, authService);
+  const scriptManager = new ScriptManager(configManager, kvManager, logger, authService, rateLimiter);
   await scriptManager.init();
   await scriptManager.loadModules(); // Added this line to load modules
 
 
-  const wsManager = new SocketManager(configManager, scriptManager, logger, authService);
+  const wsManager = new SocketManager(configManager, scriptManager, logger, authService, rateLimiter);
   await wsManager.init();
 
   const minecraftWsPort = await configManager.get('MINECRAFT_WS_PORT') as number;

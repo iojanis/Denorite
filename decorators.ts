@@ -2,6 +2,7 @@
 // src/decorators.ts
 // deno-lint-ignore-file
 import { PlayerManager } from "./core/PlayerManager.ts";
+import type { RateLimiter } from "./core/RateLimiter.ts";
 
 // ... (existing metadata handling code from decorators.ts remains the same)
 
@@ -115,17 +116,6 @@ export function Argument(configs: { name: string; type: string; description: str
   };
 }
 
-// todo: limit execution rate for a method
-export function Limit(limit: string) {
-  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `limit:${context.name.toString()}`, limit);
-    return function (this: any, ...args: unknown[]) {
-      // Here you can add permission-specific logic
-      return originalMethod.apply(this, args);
-    };
-  };
-}
-
 export function Socket(socketName?: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     const name = socketName || context.name.toString();
@@ -147,12 +137,82 @@ export function Description(description: string) {
   };
 }
 
-// todo: cron jobs
-export function Cron(cronExpression: string) {
+interface CronOptions {
+  backoffSchedule?: number[];
+}
+
+export function Cron(cronExpression: string, options?: CronOptions) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `schedule:${context.name.toString()}`, cronExpression);
-    return function (this: any, ...args: unknown[]) {
-      // Here you can add schedule-specific logic if needed
+    setMetadata(context.metadata, `cron:${context.name.toString()}`, {
+      expression: cronExpression,
+      options
+    });
+
+    return async function (this: any, ...args: unknown[]) {
+      // The original method execution remains unchanged
+      return originalMethod.apply(this, args);
+    };
+  };
+}
+
+export function Limit(limit: string) {
+  return function (originalMethod: any, context: ClassMethodDecoratorContext) {
+    setMetadata(context.metadata, `limit:${context.name.toString()}`, limit);
+
+    return async function (this: any, ...args: unknown[]) {
+      const [scriptContext] = args;
+      const { params } = scriptContext as { params: any };
+      const sender = params.sender || params.playerName;
+
+      if (!sender) {
+        throw new Error('No sender specified for rate limit check');
+      }
+
+      // Parse the limit string (e.g., "10/minute", "100/hour")
+      const [count, interval] = limit.split('/');
+      const maxRequests = parseInt(count);
+
+      // Convert interval to milliseconds
+      let windowMs: number;
+      switch (interval.toLowerCase()) {
+        case 'second':
+          windowMs = 1000;
+          break;
+        case 'minute':
+          windowMs = 60 * 1000;
+          break;
+        case 'hour':
+          windowMs = 60 * 60 * 1000;
+          break;
+        case 'day':
+          windowMs = 24 * 60 * 60 * 1000;
+          break;
+        default:
+          throw new Error(`Invalid rate limit interval: ${interval}`);
+      }
+
+      // Create rate limit config
+      const config = {
+        windowMs,
+        maxRequests
+      };
+
+      // Get method name for rate limiting
+      const methodName = context.name.toString();
+
+      // Check rate limit using RateLimiter
+      const rateLimiter = scriptContext.rateLimiter as RateLimiter;
+      const result = await rateLimiter.handleSocketRateLimit(
+        sender,
+        `${this.constructor.name}:${methodName}`,
+        'player' // Default to player role, can be enhanced to be more dynamic
+      );
+
+      if (!result.allowed) {
+        throw new Error(result.error || 'Rate limit exceeded');
+      }
+
+      // Execute the original method if rate limit check passes
       return originalMethod.apply(this, args);
     };
   };

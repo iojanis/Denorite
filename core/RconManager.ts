@@ -31,7 +31,7 @@ export class RconManager {
     this.cleanupInterval = cleanupInterval;
 
     // Start cleanup interval
-    this.cleanupTimer = setInterval(() => this.cleanup(), this.cleanupInterval);
+    // this.cleanupTimer = setInterval(() => this.cleanup(), this.cleanupInterval);
   }
 
   async createConnection(socket: WebSocket, token: string): Promise<void> {

@@ -14,7 +14,10 @@ import { ModuleWatcher } from "./ModuleWatcher.ts";
 import { PlayerManager } from "./PlayerManager.ts";
 import { RconManager } from "./RconManager.ts";
 import {RconClient} from "./RconClient.ts";
+import {WebSocketCommandHandler} from "./WebSocketCommandHandler.ts";
 import {createBlueMapAPI} from "../api/bluemapAPI.ts";
+import {CronManager} from "./CronManager.ts";
+import {createFilesAPI} from "../api/filesAPI.ts";
 
 interface CommandMetadata {
   name: string;
@@ -38,13 +41,17 @@ export class ScriptManager {
   public playerManager: PlayerManager;
   private rconManager: RconManager;
   private basePath: string;
+  private cronManager: CronManager;
   moduleWatcher: ModuleWatcher;
+
+  private wsCommandHandler: WebSocketCommandHandler;
 
   constructor(
     config: ConfigManager,
     kv: KvManager,
     logger: Logger,
-    auth: AuthService
+    auth: AuthService,
+    rateLimiter: RateLimiter
   ) {
     this.config = config;
     this.kv = kv;
@@ -59,10 +66,17 @@ export class ScriptManager {
       resolve(this.basePath, '../modules')
     );
 
+    this.wsCommandHandler = new WebSocketCommandHandler(
+      this.logger,
+      config.get('COMMAND_TIMEOUT') as unknown as number || 5000
+    );
+
     // Initialize the interpreter with our context factory
     this.interpreter = new ScriptInterpreter(
       this.logger,
-      this.createContext.bind(this)
+      this.createContext.bind(this),
+      this.kv.kv,
+      rateLimiter
     );
 
     this.rconManager = new RconManager(
@@ -238,6 +252,11 @@ export class ScriptManager {
       this.kv.kv
     );
 
+    const filesAPI = createFilesAPI(
+      this.sendToMinecraft.bind(this),
+      this.logger.info.bind(this.logger)
+    )
+
     const bluemapAPI = createBlueMapAPI(
       this.sendToMinecraft.bind(this),
       this.logger.info.bind(this.logger)
@@ -278,6 +297,8 @@ export class ScriptManager {
       auth: this.auth,
 
       bluemap: bluemapAPI,
+
+      files: filesAPI,
 
       playerManager: this.playerManager,
 
@@ -366,6 +387,9 @@ export class ScriptManager {
       // Add socket to set
       this.minecraftSockets.add(socket);
 
+      // Set the socket in the command handler
+      this.wsCommandHandler.setSocket(socket);
+
       // Initialize RCON connection
       this.rconManager.createConnection(socket, token).catch(error => {
         this.logger.error(`Failed to create RCON connection: ${error.message}`);
@@ -412,48 +436,22 @@ export class ScriptManager {
   private getHealthySocket(): WebSocket | null {
     return Array.from(this.minecraftSockets)
       .find(socket =>
-        socket.readyState === WebSocket.OPEN &&
-        socket.bufferedAmount === 0
+        socket.readyState === WebSocket.OPEN
       ) || null;
   }
 
   private async sendToMinecraft(data: unknown): Promise<unknown> {
-    // Use a longer timeout for registration commands
-    const baseTimeout = await this.config.get('COMMAND_TIMEOUT') as number || 5000;
-    const timeout = baseTimeout * 3;
+    const socket = this.getHealthySocket();
+    if (!socket) {
+      throw new Error('No healthy Minecraft WebSocket connections available');
+    }
 
-    return new Promise((resolve, reject) => {
-      const socket = this.getHealthySocket();
-      if (!socket) {
-        reject(new Error('No healthy Minecraft WebSocket connections available'));
-        return;
-      }
-
-      const messageId = Date.now().toString();
-      const message = {
-        id: messageId,
-        ...(data as Record<string, unknown>)
-      };
-
-      const timeoutId = setTimeout(() => {
-        this.pendingResponses.delete(messageId);
-        reject(new Error(`Command response timed out: ${JSON.stringify(message)}`));
-      }, timeout);
-
-      this.pendingResponses.set(messageId, (response: unknown) => {
-        clearTimeout(timeoutId);
-        this.pendingResponses.delete(messageId);
-        resolve(response);
-      });
-
-      try {
-        socket.send(JSON.stringify(message));
-      } catch (error) {
-        clearTimeout(timeoutId);
-        this.pendingResponses.delete(messageId);
-        reject(error);
-      }
-    });
+    try {
+      return await this.wsCommandHandler.sendCommand(socket, data);
+    } catch (error) {
+      this.logger.error(`Error sending command to Minecraft: ${error.message}`);
+      throw error;
+    }
   }
 
   broadcastPlayers(data: unknown): void {
@@ -495,15 +493,22 @@ export class ScriptManager {
   }
 
   async handleMessage(data: Record<string, unknown>, _type: 'minecraft' | 'fresh'): Promise<Record<string, unknown>> {
+    if (data.id && this.wsCommandHandler.handleResponse(data.id as string, data)) {
+      return {}; // Response was handled
+    }
+
     switch (data.type) {
       case 'custom_command_executed':
-        await this.handleCommand(
+        // Commands can now run truly in parallel
+        this.handleCommand(
           data.command as string,
-          data.subcommand as string,
-          data.arguments,
-          data.sender as string,
-          data.senderType as string
-        );
+          data.data?.subcommand as string,
+          data.data?.arguments,
+          data.data?.sender as string,
+          data.data?.senderType as string
+        ).catch(error => {
+          this.logger.error(`Error handling command: ${error}`);
+        });
         return {};
       case 'command':
         return { result: await this.executeCommand(data.data as string) };

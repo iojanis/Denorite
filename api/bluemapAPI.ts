@@ -18,13 +18,6 @@ interface MarkerBase {
   minDistance?: number;
 }
 
-interface MarkerSetOptions {
-  label?: string;
-  toggleable?: boolean;
-  defaultHidden?: boolean;
-  sorting?: number;
-}
-
 interface POIMarkerOptions extends MarkerBase {
   icon?: string;
 }
@@ -56,87 +49,68 @@ interface ExtrudeMarkerOptions extends MarkerBase {
   fillColor?: Color;
 }
 
+interface MarkerSetOptions {
+  label?: string;
+  toggleable?: boolean;
+  defaultHidden?: boolean;
+  sorting?: number;
+}
+
 export function createBlueMapAPI(
   sendToMinecraft: (data: unknown) => Promise<unknown>,
   log: (message: string) => void
 ) {
+  const createBlueMapCommand = (subcommand: string, args: Record<string, any>) => {
+    return {
+      type: "bluemap",
+      data: {
+        subcommand,
+        arguments: args
+      }
+    };
+  };
+
   return {
     // Marker Set Management
     async createMarkerSet(id: string, options: MarkerSetOptions = {}) {
-      return await sendToMinecraft({
-        type: "bluemap",
-        subcommand: "createSet",
-        arguments: {
-          id,
-          data: JSON.stringify({
-            label: options.label ?? id,
-            toggleable: options.toggleable ?? true,
-            defaultHidden: options.defaultHidden ?? false,
-            sorting: options.sorting ?? 0
-          })
-        }
-      });
+      return await sendToMinecraft(createBlueMapCommand("createSet", {
+        id,
+        data: JSON.stringify({
+          label: options.label ?? id,
+          toggleable: options.toggleable ?? true,
+          defaultHidden: options.defaultHidden ?? false,
+          sorting: options.sorting ?? 0
+        })
+      }));
     },
 
     async removeMarkerSet(id: string) {
-      return await sendToMinecraft({
-        type: "bluemap",
-        subcommand: "removeSet",
-        arguments: { id }
-      });
+      return await sendToMinecraft(createBlueMapCommand("removeSet", {
+        id
+      }));
     },
 
     async listMarkerSets() {
-      return await sendToMinecraft({
-        type: "bluemap",
-        subcommand: "listSets"
-      });
+      return await sendToMinecraft(createBlueMapCommand("listSets", {
+        data: ""
+      }));
     },
 
     // Marker Management
-    async addMarker(markerSet: string, id: string, type: string, data: unknown) {
-      return await sendToMinecraft({
-        type: "bluemap",
-        subcommand: "add",
-        arguments: {
-          markerset: markerSet,
-          markerid: id,
-          type: type,
-          data: JSON.stringify(data)
-        }
-      });
+    async addMarker(markerset: string, markerid: string, type: string, data: POIMarkerOptions | HTMLMarkerOptions | LineMarkerOptions | ShapeMarkerOptions | ExtrudeMarkerOptions) {
+      return await sendToMinecraft(createBlueMapCommand("add", {
+        markerset,
+        markerid,
+        type,
+        data: JSON.stringify(data)
+      }));
     },
 
-    async removeMarker(markerSet: string, id: string) {
-      return await sendToMinecraft({
-        type: "bluemap",
-        subcommand: "remove",
-        arguments: {
-          markerset: markerSet,
-          markerid: id
-        }
-      });
-    },
-
-    // Helper methods for different marker types
-    async addPOI(set: string, id: string, options: POIMarkerOptions) {
-      return this.addMarker(set, id, "poi", options);
-    },
-
-    async addHTML(set: string, id: string, options: HTMLMarkerOptions) {
-      return this.addMarker(set, id, "html", options);
-    },
-
-    async addLine(set: string, id: string, options: LineMarkerOptions) {
-      return this.addMarker(set, id, "line", options);
-    },
-
-    async addShape(set: string, id: string, options: ShapeMarkerOptions) {
-      return this.addMarker(set, id, "shape", options);
-    },
-
-    async addExtrude(set: string, id: string, options: ExtrudeMarkerOptions) {
-      return this.addMarker(set, id, "extrude", options);
+    async removeMarker(markerset: string, markerid: string) {
+      return await sendToMinecraft(createBlueMapCommand("remove", {
+        markerset,
+        markerid
+      }));
     }
   };
 }

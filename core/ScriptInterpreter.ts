@@ -1,6 +1,8 @@
 import type { ScriptContext } from "../types.ts";
 import { Logger } from "./logger.ts";
 import {getMetadata, listMetadata, WatchConfig} from "../decorators.ts";
+import type { RateLimiter } from "./RateLimiter.ts";
+import {CronManager} from "./CronManager.ts";
 
 interface ModuleMetadata {
   name: string;
@@ -52,10 +54,15 @@ export class ScriptInterpreter {
   private watches: Map<string, WatchRegistration> = new Map();
   private pendingDebounces: Map<string, number> = new Map();
   private logger: Logger;
+  private cronManager: CronManager;
+  private rateLimiter: RateLimiter;
 
-  constructor(logger: Logger, contextFactory: (params: Record<string, unknown>) => ScriptContext) {
+  constructor(logger: Logger, contextFactory: (params: Record<string, unknown>) => ScriptContext, kv: Deno.Kv,
+              rateLimiter: RateLimiter) {
     this.logger = logger;
     this.contextFactory = contextFactory;
+    this.cronManager = new CronManager(logger);
+    this.rateLimiter = rateLimiter;
   }
 
   private async processCommandMetadata(

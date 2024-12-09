@@ -38,6 +38,7 @@ interface InstalledMod {
   description: 'Manage Fabric mods from Modrinth'
 })
 export class ModrinthManager {
+  // Helper methods remain unchanged
   private async getServerVersion(kv: Deno.Kv): Promise<string> {
     const version = await kv.get(['server', 'version']);
     return version.value as string || '1.21.1';
@@ -64,7 +65,6 @@ export class ModrinthManager {
       v.loaders.includes('fabric')
     );
 
-    // Sort by version number (newest first)
     return compatibleVersions.sort((a, b) =>
       b.version_number.localeCompare(a.version_number)
     )[0] || null;
@@ -113,10 +113,11 @@ export class ModrinthManager {
   @Argument([
     { name: 'query', type: 'string', description: 'Search query' }
   ])
-  async search({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async search({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], results?: ModrinthProject[] }> {
     const { sender, args } = params;
     const query = args.query;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
 
     try {
       const response = await this.fetchFromModrinth(
@@ -124,23 +125,23 @@ export class ModrinthManager {
       );
       const results = await response.json();
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `=== Search Results for "${query}" ===`,
         color: "gold",
         bold: true
       }));
 
       if (results.hits.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "No results found",
           color: "red"
         }));
-        return;
+        return { messages, results: [] };
       }
 
       for (const hit of results.hits.slice(0, 5)) {
         const project = hit as ModrinthProject;
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           { text: "\n" },
           {
             text: project.title,
@@ -148,7 +149,7 @@ export class ModrinthManager {
             bold: true,
             clickEvent: {
               action: "suggest_command",
-              value: `/modrinth install ${project.slug}`
+              value: `/mod install ${project.slug}`
             },
             hoverEvent: {
               action: "show_text",
@@ -162,12 +163,14 @@ export class ModrinthManager {
       }
 
       log(`Searched for mods matching "${query}"`);
+      return { messages, results: results.hits };
     } catch (error) {
       log(`Error searching mods: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, error: error.message };
     }
   }
 
@@ -177,73 +180,71 @@ export class ModrinthManager {
   @Argument([
     { name: 'slug', type: 'string', description: 'Mod slug/ID' }
   ])
-  async install({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async install({
+                  params, tellraw, log, kv, files, sendToMinecraft
+                }: ScriptContext): Promise<{ messages: any[], success?: boolean, installedMod?: InstalledMod }> {
     const { sender, args } = params;
     const { slug } = args;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
 
     try {
-      // Check if already installed
       const installed = await kv.get(['installed_mods', slug]);
       if (installed.value) {
         throw new Error(`Mod ${slug} is already installed`);
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Fetching information for ${slug}...`,
         color: "yellow"
       }));
 
-      // Get project info
       const projectResponse = await this.fetchFromModrinth(`/project/${slug}`);
       const project = await projectResponse.json() as ModrinthProject;
 
-      // Get versions
       const versionsResponse = await this.fetchFromModrinth(`/project/${slug}/version`);
       const versions = await versionsResponse.json() as ModrinthVersion[];
 
-      // Find compatible version
       const version = await this.getCompatibleVersion(versions, mcVersion);
       if (!version) {
         throw new Error(`No compatible version found for Minecraft ${mcVersion}`);
       }
 
-      // Get primary file
       const file = version.files.find(f => f.primary);
       if (!file) {
         throw new Error('No primary file found');
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Downloading ${project.title} v${version.version_number}...`,
         color: "yellow"
       }));
 
-      // Download mod using modified download method
       await this.downloadModFile(sendToMinecraft, files, file.url, file.filename);
 
-      // Record installation
-      const mod: InstalledMod = {
+      const installedMod: InstalledMod = {
         slug,
         title: project.title,
         version: version.version_number,
         filename: file.filename,
         installedAt: Date.now()
       };
-      await this.updateInstalledMods(kv, mod, 'add');
+      await this.updateInstalledMods(kv, installedMod, 'add');
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully installed ${project.title} v${version.version_number}`,
         color: "green"
       }));
 
       log(`Installed mod ${slug} v${version.version_number}`);
+      return { messages, success: true, installedMod };
     } catch (error) {
       log(`Error installing mod: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -253,9 +254,12 @@ export class ModrinthManager {
   @Argument([
     { name: 'slug', type: 'string', description: 'Mod slug/ID' }
   ])
-  async uninstall({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async uninstall({
+                    params, tellraw, log, kv, files, sendToMinecraft
+                  }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const { slug } = args;
+    let messages = [];
 
     try {
       const installed = await kv.get(['installed_mods', slug]);
@@ -265,7 +269,7 @@ export class ModrinthManager {
 
       const mod = installed.value as InstalledMod;
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Uninstalling ${mod.title}...`,
         color: "yellow"
       }));
@@ -273,56 +277,59 @@ export class ModrinthManager {
       await this.deleteModFile(sendToMinecraft, files, mod.filename);
       await this.updateInstalledMods(kv, mod, 'remove');
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully uninstalled ${mod.title}`,
         color: "green"
       }));
 
       log(`Uninstalled mod ${slug}`);
+      return { messages, success: true };
     } catch (error) {
       log(`Error uninstalling mod: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['mod', 'list'])
   @Description('List installed mods')
   @Permission('operator')
-  async list({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async list({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], mods?: InstalledMod[] }> {
     const { sender } = params;
+    let messages = [];
+    const mods: InstalledMod[] = [];
 
     try {
-      const mods: InstalledMod[] = [];
       for await (const entry of kv.list({ prefix: ['installed_mods'] })) {
         mods.push(entry.value as InstalledMod);
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: "=== Installed Mods ===",
         color: "gold",
         bold: true
       }));
 
       if (mods.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "\nNo mods installed",
           color: "yellow"
         }));
-        return;
+        return { messages, mods };
       }
 
       for (const mod of mods) {
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           { text: "\n" },
           {
             text: mod.title,
             color: "yellow",
             clickEvent: {
               action: "suggest_command",
-              value: `/modrinth uninstall ${mod.slug}`
+              value: `/mod uninstall ${mod.slug}`
             },
             hoverEvent: {
               action: "show_text",
@@ -336,21 +343,29 @@ export class ModrinthManager {
       }
 
       log('Listed installed mods');
+      return { messages, mods };
     } catch (error) {
       log(`Error listing mods: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages };
     }
   }
 
   @Command(['mod', 'update'])
   @Description('Check for and install mod updates')
   @Permission('operator')
-  async update({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async update({ params, tellraw, log, kv, files, sendToMinecraft }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    updatedCount?: number
+  }> {
     const { sender } = params;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
+    let updatedCount = 0;
 
     try {
       const mods: InstalledMod[] = [];
@@ -359,19 +374,17 @@ export class ModrinthManager {
       }
 
       if (mods.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "No mods installed",
           color: "yellow"
         }));
-        return;
+        return { messages, success: true, updatedCount: 0 };
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: "Checking for updates...",
         color: "yellow"
       }));
-
-      let updatedCount = 0;
 
       for (const mod of mods) {
         try {
@@ -379,26 +392,20 @@ export class ModrinthManager {
           const versions = await versionsResponse.json() as ModrinthVersion[];
           const latestVersion = await this.getCompatibleVersion(versions, mcVersion);
 
-          if (!latestVersion) {
-            continue;
-          }
+          if (!latestVersion) continue;
 
           if (latestVersion.version_number !== mod.version) {
             const file = latestVersion.files.find(f => f.primary);
             if (!file) continue;
 
-            await api.tellraw(sender, JSON.stringify({
+            messages = await tellraw(sender, JSON.stringify({
               text: `Updating ${mod.title}...`,
               color: "yellow"
             }));
 
-            // Download new version
             await this.downloadModFile(sendToMinecraft, files, file.url, file.filename);
-
-            // Delete old version
             await this.deleteModFile(sendToMinecraft, files, mod.filename);
 
-            // Update installation record
             const updatedMod: InstalledMod = {
               ...mod,
               version: latestVersion.version_number,
@@ -406,7 +413,7 @@ export class ModrinthManager {
             };
             await this.updateInstalledMods(kv, updatedMod, 'add');
 
-            await api.tellraw(sender, JSON.stringify({
+            messages = await tellraw(sender, JSON.stringify({
               text: `Updated ${mod.title} from v${mod.version} to v${latestVersion.version_number}`,
               color: "green"
             }));
@@ -415,7 +422,7 @@ export class ModrinthManager {
           }
         } catch (error) {
           log(`Error checking update for ${mod.slug}: ${error.message}`);
-          await api.tellraw(sender, JSON.stringify({
+          messages = await tellraw(sender, JSON.stringify({
             text: `Error updating ${mod.title}: ${error.message}`,
             color: "red"
           }));
@@ -423,24 +430,26 @@ export class ModrinthManager {
       }
 
       if (updatedCount === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "All mods are up to date",
           color: "green"
         }));
       } else {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: `Updated ${updatedCount} mod${updatedCount === 1 ? '' : 's'}`,
           color: "green"
         }));
       }
 
       log(`Checked for updates, updated ${updatedCount} mods`);
+      return { messages, success: true, updatedCount };
     } catch (error) {
       log(`Error updating mods: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 }

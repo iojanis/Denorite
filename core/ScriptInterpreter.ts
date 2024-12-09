@@ -31,6 +31,7 @@ interface CommandRegistrationData extends CommandMetadata {
   moduleName: string;
   methodName: string;
   arguments: string[];
+  socketName: string;
 }
 
 interface WatchRegistration {
@@ -79,6 +80,21 @@ export class ScriptInterpreter {
     // For paths like ["bank", "balance"], we need to register under "bank" with "balance" as subcommand
     const rootCommandName = commandPath[0];
 
+    // Check if there's a socket decorator for this method
+    const socketMetadata = allMetadata[`socket:${methodName}`];
+
+    // If there is a socket decorator, get its name or generate from command path
+    let socketName = socketMetadata?.name;
+    if (!socketName && commandPath) {
+      // Generate socket name from command path if none provided
+      socketName = commandPath.join('_');
+    }
+
+    // If we have a socket name, register the socket handler
+    if (socketName) {
+      this.addSocketHandler(socketName, moduleName, methodName);
+    }
+
     if (!commandStructure[rootCommandName]) {
       // Initialize the root command if it doesn't exist
       commandStructure[rootCommandName] = {
@@ -104,7 +120,8 @@ export class ScriptInterpreter {
         permissions: Array.isArray(permissionMetadata) ? permissionMetadata : [permissionMetadata],
         moduleName,
         methodName,
-        arguments: argumentMetadata
+        arguments: argumentMetadata,
+        socketName // Add socket name to command metadata
       });
     } else {
       // This is a subcommand
@@ -122,7 +139,8 @@ export class ScriptInterpreter {
         permissions: Array.isArray(permissionMetadata) ? permissionMetadata : [permissionMetadata],
         moduleName,
         methodName,
-        arguments: argumentMetadata
+        arguments: argumentMetadata,
+        socketName // Add socket name to subcommand metadata
       };
 
       // Add to subcommands array of the root command
@@ -148,7 +166,8 @@ export class ScriptInterpreter {
         : [allMetadata[`permission:${methodName}`] || 'player'],
       moduleName,
       methodName,
-      arguments: allMetadata[`arguments:${methodName}`] || []
+      arguments: allMetadata[`arguments:${methodName}`] || [],
+      socketName // Add socket name to registration data
     });
   }
 
@@ -460,9 +479,21 @@ export class ScriptInterpreter {
   }
 
   async executeSocket(socketType: string, data: unknown): Promise<unknown> {
-    const handler = this.sockets.get(socketType);
+    let handler = this.sockets.get(socketType);
     if (!handler) {
-      throw new Error(`Socket handler not found: ${socketType}`);
+      // Check if this socket type corresponds to a command
+      const commandRegistration = Array.from(this.commandRegistrations.values())
+        .find(reg => reg.socketName === socketType);
+
+      if (!commandRegistration) {
+        throw new Error(`Socket handler not found: ${socketType}`);
+      }
+
+      // Use the command's module and method
+      handler = {
+        moduleName: commandRegistration.moduleName,
+        methodName: commandRegistration.methodName
+      };
     }
 
     const { moduleName, methodName } = handler;
@@ -477,7 +508,12 @@ export class ScriptInterpreter {
       throw new Error(`Socket method not found: ${moduleName}.${methodName}`);
     }
 
-    const context = this.contextFactory({ socketType, ...data as Record<string, unknown> });
+    const context = this.contextFactory({
+      socketType,
+      ...data as Record<string, unknown>,
+      // Include any command-specific context needed
+    });
+
     return await socketMethod.call(moduleInstance, context);
   }
 

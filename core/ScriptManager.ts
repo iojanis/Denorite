@@ -27,6 +27,36 @@ interface CommandMetadata {
   subcommands?: any[];
 }
 
+interface TellrawComponent {
+  text: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
+  strikethrough?: boolean;
+  obfuscated?: boolean;
+  insertion?: string;
+  clickEvent?: {
+    action: 'open_url' | 'run_command' | 'suggest_command' | 'change_page' | 'copy_to_clipboard';
+    value: string;
+  };
+  hoverEvent?: {
+    action: 'show_text' | 'show_item' | 'show_entity';
+    contents: string | object;
+  };
+  extra?: TellrawComponent[];
+}
+
+function extractTextFromComponent(component: TellrawComponent): string {
+  let text = component.text || '';
+
+  if (component.extra) {
+    text += component.extra.map(extractTextFromComponent).join('');
+  }
+
+  return text;
+}
+
 export class ScriptManager {
   private interpreter: ScriptInterpreter;
   private config: ConfigManager;
@@ -246,6 +276,8 @@ export class ScriptManager {
       this.logger.info.bind(this.logger)
     );
 
+    const contextComponents: TellrawComponent[] = [];
+
     const displayApi = createDisplayAPI(
       this.sendToMinecraft.bind(this),
       this.logger.info.bind(this.logger),
@@ -299,6 +331,39 @@ export class ScriptManager {
       bluemap: bluemapAPI,
 
       files: filesAPI,
+
+      tellraw: async (target: string, message: string | TellrawComponent) => {
+        // Convert string messages to TellrawComponent
+        const component: TellrawComponent = typeof message === 'string'
+          ? { text: message }
+          : message;
+
+        // Convert to JSON for Minecraft
+        const jsonMessage = JSON.stringify(component);
+
+        // Send to Minecraft
+        await this.executeCommand(`tellraw ${target} ${message}`);
+
+        // Send to WebSocket player
+        this.sendToPlayer(target, {
+          type: 'chat_message',
+          message: component.text,
+          timestamp: Date.now(),
+          metadata: {
+            color: component.color || 'white',
+            bold: component.bold || false,
+            italic: component.italic || false,
+            underlined: component.underlined || false
+          }
+        });
+
+        // Store the complete component
+        contextComponents.push(component);
+        contextComponents.push({ text: '\n' });
+
+        // Return all components in this context
+        return [...contextComponents];
+      },
 
       playerManager: this.playerManager,
 
@@ -364,7 +429,6 @@ export class ScriptManager {
   async executeModuleScript(moduleName: string, methodName: string, params: Record<string, unknown>): Promise<unknown> {
     return await this.interpreter.executeModuleScript(moduleName, methodName, params);
   }
-
 
   addMinecraftSocket(socket: WebSocket, req: Request): void {
     try {

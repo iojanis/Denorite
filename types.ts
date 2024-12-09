@@ -4,6 +4,26 @@ import {AuthService} from "./core/AuthService.ts";
 import { PlayerManager } from "./core/PlayerManager.ts";
 import {RconClient} from "./core/RconClient.ts";
 
+interface TellrawComponent {
+  text: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
+  strikethrough?: boolean;
+  obfuscated?: boolean;
+  insertion?: string;
+  clickEvent?: {
+    action: 'open_url' | 'run_command' | 'suggest_command' | 'change_page' | 'copy_to_clipboard';
+    value: string;
+  };
+  hoverEvent?: {
+    action: 'show_text' | 'show_item' | 'show_entity';
+    contents: string | object;
+  };
+  extra?: TellrawComponent[];
+}
+
 export interface ScriptContext {
   params: Record<string, unknown>;
   kv: Deno.Kv;
@@ -33,6 +53,7 @@ export interface ScriptContext {
   isOnline: (playerName: string) => boolean;
   isOperator: (playerName: string) => boolean;
   rcon: RconClient
+  tellraw: (target: unknown, message: string | TellrawComponent) => Promise<string>;
 }
 
 export interface PlayerData {

@@ -39,10 +39,8 @@ export class FileSystem {
 
   private resolvePath(currentDir: string, path: string): string {
     if (path.startsWith('/')) {
-      // Absolute path
       return normalize(path);
     }
-    // Relative path
     return normalize(join(currentDir, path));
   }
 
@@ -90,11 +88,12 @@ export class FileSystem {
   @Argument([
     { name: 'path', type: 'string', description: 'Target directory path', optional: true }
   ])
-  async cd({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async cd({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const targetPath = args.path || '/';
     const currentDir = await this.getCurrentDir(kv, sender);
     const newPath = this.resolvePath(currentDir, targetPath);
+    let messages = [];
 
     try {
       const fullPath = this.getFullPath(newPath);
@@ -106,17 +105,19 @@ export class FileSystem {
 
       await this.updateCurrentDir(kv, sender, newPath);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: newPath,
         color: "green"
       }));
 
       log(`Changed directory to ${newPath}`);
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `cd: ${targetPath}: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -126,10 +127,11 @@ export class FileSystem {
   @Argument([
     { name: 'path', type: 'string', description: 'Directory path', optional: true }
   ])
-  async ls({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async ls({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], entries?: any[] }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const targetPath = this.resolvePath(currentDir, args.path || '.');
+    let messages = [];
 
     try {
       const fullPath = this.getFullPath(targetPath);
@@ -146,11 +148,10 @@ export class FileSystem {
           isDirectory: stat.isDirectory,
           size: stat.size,
           modified: stat.mtime || new Date(),
-          mode: 0o755 // Default mode since Deno doesn't provide this
+          mode: 0o755
         });
       }
 
-      // Sort entries: directories first, then files
       entries.sort((a, b) => {
         if (a.isDirectory === b.isDirectory) {
           return a.name.localeCompare(b.name);
@@ -158,8 +159,7 @@ export class FileSystem {
         return a.isDirectory ? -1 : 1;
       });
 
-      // Print directory listing
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `total ${entries.length}`,
         color: "yellow"
       }));
@@ -170,7 +170,7 @@ export class FileSystem {
         const date = this.formatDate(entry.modified);
         const name = entry.name + (entry.isDirectory ? '/' : '');
 
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: `${date} ${size} `,
           color: "gray",
           extra: [{
@@ -181,11 +181,13 @@ export class FileSystem {
       }
 
       log(`Listed directory ${targetPath}`);
+      return { messages, entries };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `ls: ${args.path || '.'}: ${error.message}`,
         color: "red"
       }));
+      return { messages, error: error.message };
     }
   }
 
@@ -195,26 +197,29 @@ export class FileSystem {
   @Argument([
     { name: 'file', type: 'string', description: 'File path' }
   ])
-  async cat({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async cat({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], content?: string }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const targetPath = this.resolvePath(currentDir, args.file);
+    let messages = [];
 
     try {
       const fullPath = this.getFullPath(targetPath);
       const content = await Deno.readTextFile(fullPath);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: content,
         color: "white"
       }));
 
       log(`Displayed contents of ${targetPath}`);
+      return { messages, content };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `cat: ${args.file}: ${error.message}`,
         color: "red"
       }));
+      return { messages, error: error.message };
     }
   }
 
@@ -225,26 +230,29 @@ export class FileSystem {
     { name: 'file', type: 'string', description: 'File path' },
     { name: 'content', type: 'string', description: 'Text to append' }
   ])
-  async append({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async append({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const targetPath = this.resolvePath(currentDir, args.file);
+    let messages = [];
 
     try {
       const fullPath = this.getFullPath(targetPath);
       await Deno.writeTextFile(fullPath, args.content, { append: true });
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Appended to ${targetPath}`,
         color: "green"
       }));
 
       log(`Appended to file ${targetPath}`);
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `append: ${args.file}: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -255,11 +263,12 @@ export class FileSystem {
     { name: 'source', type: 'string', description: 'Source path' },
     { name: 'destination', type: 'string', description: 'Destination path' }
   ])
-  async mv({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async mv({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const sourcePath = this.resolvePath(currentDir, args.source);
     const destPath = this.resolvePath(currentDir, args.destination);
+    let messages = [];
 
     try {
       const fullSourcePath = this.getFullPath(sourcePath);
@@ -267,17 +276,19 @@ export class FileSystem {
 
       await Deno.rename(fullSourcePath, fullDestPath);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Moved ${sourcePath} to ${destPath}`,
         color: "green"
       }));
 
       log(`Moved ${sourcePath} to ${destPath}`);
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `mv: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -288,11 +299,12 @@ export class FileSystem {
     { name: 'source', type: 'string', description: 'Source path' },
     { name: 'destination', type: 'string', description: 'Destination path' }
   ])
-  async cp({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async cp({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const sourcePath = this.resolvePath(currentDir, args.source);
     const destPath = this.resolvePath(currentDir, args.destination);
+    let messages = [];
 
     try {
       const fullSourcePath = this.getFullPath(sourcePath);
@@ -300,17 +312,19 @@ export class FileSystem {
 
       await Deno.copyFile(fullSourcePath, fullDestPath);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Copied ${sourcePath} to ${destPath}`,
         color: "green"
       }));
 
       log(`Copied ${sourcePath} to ${destPath}`);
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `cp: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -320,10 +334,11 @@ export class FileSystem {
   @Argument([
     { name: 'path', type: 'string', description: 'Path to remove' }
   ])
-  async rm({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async rm({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
     const targetPath = this.resolvePath(currentDir, args.path);
+    let messages = [];
 
     try {
       const fullPath = this.getFullPath(targetPath);
@@ -331,32 +346,36 @@ export class FileSystem {
 
       await Deno.remove(fullPath, { recursive: true });
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Removed ${isDir ? 'directory' : 'file'} ${targetPath}`,
         color: "green"
       }));
 
       log(`Removed ${targetPath}`);
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `rm: ${args.path}: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['pwd'])
   @Description('Print working directory')
   @Permission('operator')
-  async pwd({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async pwd({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
     const currentDir = await this.getCurrentDir(kv, sender);
+    let messages = [];
 
-    await api.tellraw(sender, JSON.stringify({
+    messages = await tellraw(sender, JSON.stringify({
       text: currentDir,
       color: "yellow"
     }));
 
     log(`Printed working directory: ${currentDir}`);
+    return { messages };
   }
 }

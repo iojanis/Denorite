@@ -25,7 +25,7 @@ interface TeamOperationQueue {
   description: 'Team management with economy and Leukocyte integration'
 })
 export class Teams {
-  private readonly TEAM_CREATION_COST = 1000;  // XPL cost to create a team
+  private readonly TEAM_CREATION_COST = 1;  // XPL cost to create a team
   private readonly VALID_COLORS = ['aqua', 'black', 'blue', 'dark_aqua', 'dark_blue', 'dark_gray', 'dark_green',
     'dark_purple', 'dark_red', 'gold', 'gray', 'green', 'light_purple', 'red', 'white', 'yellow'];
 
@@ -52,18 +52,10 @@ export class Teams {
       await api.executeCommand(`team modify ${teamId} friendlyFire false`);
       await api.executeCommand(`team modify ${teamId} nametagVisibility hideForOtherTeams`);
       await api.executeCommand(`team modify ${teamId} seeFriendlyInvisibles true`);
-
-      // Create Leukocyte protection
-      await api.executeCommand(`protect add team_${teamId}`);
-      await api.executeCommand(`protect shape start`);
-      await api.executeCommand(`protect shape add universe`);
-      await api.executeCommand(`protect shape finish global_team_${teamId} to team_${teamId}`);
-      await api.executeCommand(`protect set level team_${teamId} -1`);
     } catch (error) {
       // Cleanup on failure
       try {
         await api.executeCommand(`team remove ${teamId}`);
-        await api.executeCommand(`protect remove team_${teamId}`);
       } catch {} // Ignore cleanup errors
       throw new Error(`Failed to setup team: ${error.message}`);
     }
@@ -74,13 +66,11 @@ export class Teams {
       // Remove from old team if applicable
       if (oldTeamId) {
         await api.executeCommand(`team leave ${playerName}`);
-        await api.executeCommand(`protect exclusion remove team_${oldTeamId} player ${playerName}`);
       }
 
       // Add to new team if applicable
       if (teamId) {
         await api.executeCommand(`team join ${teamId} ${playerName}`);
-        await api.executeCommand(`protect exclusion add team_${teamId} player ${playerName}`);
       }
     } catch (error) {
       throw new Error(`Failed to update player team: ${error.message}`);
@@ -90,7 +80,6 @@ export class Teams {
   private async removeTeamProtection(api: any, teamId: string): Promise<void> {
     try {
       await api.executeCommand(`team remove ${teamId}`);
-      await api.executeCommand(`protect remove team_${teamId}`);
     } catch (error) {
       throw new Error(`Failed to remove team: ${error.message}`);
     }
@@ -161,9 +150,118 @@ export class Teams {
     }
   }
 
+  @Command(['teams'])
+  @Description('Team management commands')
+  @Permission('player')
+  async teams({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages = [];
+
+    try {
+      messages = await tellraw(sender, JSON.stringify([
+        { text: "=== Team Commands ===\n", color: "gold", bold: true },
+
+        { text: "/teams create <name>", color: "yellow" },
+        { text: " - Create a new team (costs 1 XPL)\n", color: "gray" },
+
+        {
+          text: "/teams info",
+          color: "yellow",
+          clickEvent: {
+            action: "run_command",
+            value: "/teams info"
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to view team info"
+          }
+        },
+        { text: " - View your team's information\n", color: "gray" },
+
+        {
+          text: "/teams list",
+          color: "yellow",
+          clickEvent: {
+            action: "run_command",
+            value: "/teams list"
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to list all teams"
+          }
+        },
+        { text: " - List all teams\n", color: "gray" },
+
+        { text: "/teams invite <player>", color: "yellow" },
+        { text: " - Invite a player to your team\n", color: "gray" },
+
+        { text: "/teams join <teamId>", color: "yellow" },
+        { text: " - Join a team after being invited\n", color: "gray" },
+
+        {
+          text: "/teams leave",
+          color: "yellow",
+          clickEvent: {
+            action: "run_command",
+            value: "/teams leave"
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to leave your team"
+          }
+        },
+        { text: " - Leave your current team\n", color: "gray" },
+
+        { text: "/teams promote <player>", color: "yellow" },
+        { text: " - Promote a team member to officer\n", color: "gray" },
+
+        { text: "/teams demote <player>", color: "yellow" },
+        { text: " - Demote a team officer to member\n", color: "gray" },
+
+        { text: "/teams transfer <player>", color: "yellow" },
+        { text: " - Transfer team leadership\n", color: "gray" },
+
+        { text: "/teams kick <player>", color: "yellow" },
+        { text: " - Kick a player from your team\n", color: "gray" },
+
+        { text: "/teams deposit <amount>", color: "yellow" },
+        { text: " - Deposit XPL into team bank\n", color: "gray" },
+
+        { text: "/teams withdraw <amount>", color: "yellow" },
+        { text: " - Withdraw XPL from team bank\n", color: "gray" },
+
+        { text: "\nOperator Commands:\n", color: "gold" },
+        { text: "/teams color <team> <color>", color: "yellow" },
+        { text: " - Set team color", color: "gray" },
+
+        { text: "\n\n", color: "white" },
+        {
+          text: "[Suggest Command]",
+          color: "green",
+          clickEvent: {
+            action: "suggest_command",
+            value: "/teams "
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to write a team command"
+          }
+        }
+      ]));
+
+      return { messages };
+    } catch (error) {
+      messages = await tellraw(sender, JSON.stringify({
+        text: `Error: ${error.message}`,
+        color: "red"
+      }));
+      return { messages, error: error.message };
+    }
+  }
+
   @Command(['teams', 'create'])
-  @Description('Create a new team (costs 1000 XPL)')
-  // @Permission('player')
+  @Description('Create a new team (costs 1 XPL)')
+  @Permission('player')
   @Argument([
     { name: 'name', type: 'string', description: 'Team name' }
   ])
@@ -243,7 +341,7 @@ export class Teams {
 
   @Command(['teams', 'invite'])
   @Description('Invite a player to your team')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'player', type: 'player', description: 'Player to invite' }
   ])
@@ -318,7 +416,7 @@ export class Teams {
 
   @Command(['teams', 'decline'])
   @Description('Decline a team invitation')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'teamId', type: 'string', description: 'Team ID to decline' }
   ])
@@ -356,7 +454,7 @@ export class Teams {
 
   @Command(['teams', 'join'])
   @Description('Join a team after being invited')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'teamId', type: 'string', description: 'Team ID to join' }
   ])
@@ -409,7 +507,7 @@ export class Teams {
 
   @Command(['teams', 'leave'])
   @Description('Leave your current team')
-  // @Permission('player')
+  @Permission('player')
   async leaveTeam({ params, kv, api, log }: ScriptContext): Promise<void> {
     const { sender } = params;
 
@@ -469,7 +567,7 @@ export class Teams {
 
   @Command(['teams', 'promote'])
   @Description('Promote a team member to officer')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'player', type: 'player', description: 'Player to promote' }
   ])
@@ -541,7 +639,7 @@ export class Teams {
 
   @Command(['teams', 'demote'])
   @Description('Demote a team officer to member')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'player', type: 'player', description: 'Player to demote' }
   ])
@@ -609,7 +707,7 @@ export class Teams {
 
   @Command(['teams', 'transfer'])
   @Description('Transfer team leadership to another member')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'newLeader', type: 'player', description: 'Player to transfer leadership to' }
   ])
@@ -663,7 +761,7 @@ export class Teams {
 
   @Command(['teams', 'color'])
   @Description('Set team color (operators only)')
-  // @Permission('operator')
+  @Permission('operator')
   @Argument([
     { name: 'team', type: 'string', description: 'Team ID' },
     { name: 'color', type: 'string', description: 'Team color' }
@@ -706,7 +804,7 @@ export class Teams {
 
   @Command(['teams', 'deposit'])
   @Description('Deposit XPL into team bank')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'amount', type: 'integer', description: 'Amount to deposit' }
   ])
@@ -737,11 +835,7 @@ export class Teams {
 
       // Update balances atomically
       const result = await kv.atomic()
-        .mutate({
-          type: 'sum',
-          key: ['plugins', 'economy', 'balances', sender],
-          value: new Deno.KvU64(BigInt(playerBalance - amount))
-        })
+        .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(playerBalance - amount)))
         .set(['teams', teamId], {
           ...team,
           balance: team.balance + amount
@@ -772,7 +866,7 @@ export class Teams {
 
   @Command(['teams', 'info'])
   @Description('View team information')
-  // @Permission('player')
+  @Permission('player')
   async teamInfo({ params, kv, api }: ScriptContext): Promise<void> {
     const { sender } = params;
 
@@ -810,13 +904,17 @@ export class Teams {
 
   @Command(['teams', 'list'])
   @Description('List all teams')
-  // @Permission('player')
+  @Permission('player')
   async listTeams({ params, kv, api }: ScriptContext): Promise<void> {
     const { sender } = params;
 
     try {
-      const teamsResult = await kv.get(['teams']);
-      const teams = teamsResult.value || [];
+      // Fetch teams using Deno.KV list
+      const teams = [];
+      const entriesIterator = kv.list({ prefix: ['teams'] });
+      for await (const entry of entriesIterator) {
+        teams.push(entry.value);
+      }
 
       if (teams.length === 0) {
         await api.tellraw(sender, JSON.stringify({
@@ -924,7 +1022,7 @@ export class Teams {
 
   @Command(['teams', 'withdraw'])
   @Description('Withdraw XPL from team bank (leader only)')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'amount', type: 'integer', description: 'Amount to withdraw' }
   ])
@@ -958,11 +1056,7 @@ export class Teams {
 
       // Update balances atomically
       const result = await kv.atomic()
-        .mutate({
-          type: 'sum',
-          key: ['plugins', 'bank', 'balances', sender],
-          value: new Deno.KvU64(BigInt(playerBalance+amount))
-        })
+        .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(playerBalance + amount)))
         .set(['teams', teamId], {
           ...team,
           balance: team.balance - amount
@@ -993,7 +1087,7 @@ export class Teams {
 
   @Command(['teams', 'kick'])
   @Description('Kick a player from your team')
-  // @Permission('player')
+  @Permission('player')
   @Argument([
     { name: 'player', type: 'player', description: 'Player to kick' }
   ])

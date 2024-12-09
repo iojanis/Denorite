@@ -1,4 +1,4 @@
-import { Module, Command, Description, Permission, Socket, Argument, Event } from '../decorators.ts';
+import {Module, Command, Description, Permission, Socket, Argument, Event, Online} from '../decorators.ts';
 import type { ScriptContext } from '../types.ts';
 
 interface EconomyConfig {
@@ -18,7 +18,6 @@ interface Transaction {
 @Module({
   name: 'Economy',
   version: '1.1.1',
-  // description: 'Advanced economy system with XP levels as currency'
 })
 export class Economy {
   private readonly DEFAULT_CONFIG: EconomyConfig = {
@@ -46,26 +45,24 @@ export class Economy {
     const existing = await kv.get(key);
     const transactions = existing.value || [];
 
-    // Keep last 50 transactions
     transactions.unshift(transaction);
     if (transactions.length > 50) transactions.length = 50;
 
     await kv.set(key, transactions);
   }
 
-  // Event Handlers
   @Event('player_joined')
-  async handlePlayerSync({ params, kv, api }: ScriptContext): Promise<void> {
+  async handlePlayerSync({ params, kv, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
     const { playerName } = params;
+    let messages = [];
 
-    await this.delay(1000)
+    await this.delay(1000);
 
     if (true) {
       const balance = await this.getBalance(kv, playerName);
       const config = await this.getConfig(kv);
 
-      // Welcome message with balance
-      await api.tellraw(playerName, JSON.stringify([
+      messages = await tellraw(playerName, JSON.stringify([
         { text: "Welcome to ", color: "gold" },
         { text: "XP Bank", color: "green", bold: true },
         { text: "!\n", color: "gold" },
@@ -73,7 +70,6 @@ export class Economy {
         { text: `${balance} XPL`, color: "green", bold: true }
       ]));
 
-      // Give welcome bonus to new players
       if (balance === 0 && config.welcomeBonus > 0) {
         await kv.set(['plugins', 'economy', 'balances', playerName], new Deno.KvU64(BigInt(config.welcomeBonus)));
         await this.addTransaction(kv, playerName, {
@@ -84,15 +80,75 @@ export class Economy {
           description: 'Welcome bonus'
         });
 
-        await api.tellraw(playerName, JSON.stringify({
+        messages = await tellraw(playerName, JSON.stringify({
           text: `You received a welcome bonus of ${config.welcomeBonus} XPL!`,
           color: "green"
         }));
       }
     }
+
+    return { messages };
   }
 
-  // Command Handlers
+  @Command(['bank'])
+  @Description('Bank management commands')
+  @Permission('player')
+  async bank({ params, kv, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages = [];
+
+    try {
+      const balance = await this.getBalance(kv, sender);
+      const config = await this.getConfig(kv);
+
+      messages = await tellraw(sender, JSON.stringify([
+        { text: "=== XP Bank Commands ===\n", color: "gold", bold: true },
+        { text: "Current Balance: ", color: "yellow" },
+        { text: `${balance} XPL\n\n`, color: "green", bold: true },
+        {
+          text: "/bank balance",
+          color: "yellow",
+          clickEvent: {
+            action: "run_command",
+            value: "/bank balance"
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to view your balance and recent transactions"
+          }
+        },
+        { text: " - View your balance and recent transactions\n", color: "gray" },
+        { text: `/bank deposit <amount>`, color: "yellow" },
+        { text: ` - Deposit XP levels (min: ${config.minDepositAmount} XPL)\n`, color: "gray" },
+        { text: "/bank withdraw <amount>", color: "yellow" },
+        { text: " - Withdraw XP levels\n", color: "gray" },
+        { text: "/bank send <player> <amount>", color: "yellow" },
+        { text: ` - Send XPL to another player (fee: ${config.transferFee} XPL)\n`, color: "gray" },
+        { text: "\n\n", color: "white" },
+        {
+          text: "[Suggest Command]",
+          color: "green",
+          clickEvent: {
+            action: "suggest_command",
+            value: "/bank "
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to write a bank command"
+          }
+        }
+      ]));
+
+      return { messages };
+    } catch (error) {
+      messages = await tellraw(sender, JSON.stringify({
+        text: `Error: ${error.message}`,
+        color: "red"
+      }));
+      return { messages, error: error.message };
+    }
+  }
+
   @Command(['bank', 'config'])
   @Description('Configure bank settings')
   @Permission('operator')
@@ -100,8 +156,10 @@ export class Economy {
     { name: 'setting', type: 'string', description: 'Setting to change (minDeposit/welcomeBonus/transferFee)' },
     { name: 'value', type: 'integer', description: 'New value' }
   ])
-  async configureBank({ params, kv, api, log }: ScriptContext): Promise<void> {
+  async configureBank({ params, kv, tellraw, log }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
+    let messages = [];
+
     try {
       const config = await this.getConfig(kv);
 
@@ -120,69 +178,77 @@ export class Economy {
       }
 
       await kv.set(['plugins', 'economy', 'config'], config);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Bank configuration updated successfully.`,
         color: "green"
       }));
 
       log(`Bank config updated by ${sender}: ${args.setting} = ${args.value}`);
+      return { messages, success: true };
     } catch (error) {
       log(`Error in bank configuration: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['bank', 'balance'])
   @Description('Check your bank balance and recent transactions')
   @Permission('player')
-  async checkBalance({ params, kv, api }: ScriptContext) {
+  async checkBalance({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[], balance?: number, transactions?: Transaction[] }> {
     const { sender } = params;
+    let messages = [];
+
     try {
       const balance = await this.getBalance(kv, sender);
       const transactions = await kv.get(['plugins', 'economy', 'transactions', sender]);
       const recentTransactions = (transactions.value || []).slice(0, 5);
 
-      // Send balance message
-      await api.tellraw(sender, JSON.stringify([
+      messages = await tellraw(sender, JSON.stringify([
         { text: "=== Bank Statement ===\n", color: "gold", bold: true },
         { text: "Current Balance: ", color: "yellow" },
         { text: `${balance} XPL\n`, color: "green", bold: true }
       ]));
 
-      // Show recent transactions if any exist
       if (recentTransactions.length > 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "Recent Transactions:",
           color: "yellow"
         }));
 
         for (const tx of recentTransactions) {
           const sign = tx.type === 'withdraw' || tx.type === 'transfer' ? '-' : '+';
-          await api.tellraw(sender, JSON.stringify({
+          messages = await tellraw(sender, JSON.stringify({
             text: `${new Date(tx.timestamp).toLocaleString()}: ${sign}${tx.amount} XPL (${tx.description})`,
             color: "gray"
           }));
         }
       }
 
-      return { success: true, balance, recentTransactions };
+      return { messages, balance, transactions: recentTransactions };
     } catch (error) {
-      return { success: false, error: error.message };
+      messages = await tellraw(sender, JSON.stringify({
+        text: `Error: ${error.message}`,
+        color: "red"
+      }));
+      return { messages, error: error.message };
     }
   }
 
+  @Online()
   @Command(['bank', 'deposit'])
   @Description('Deposit XP levels into your bank account')
   @Permission('player')
   @Argument([
     { name: 'amount', type: 'integer', description: 'The amount of XP levels to deposit' }
   ])
-  async deposit({ params, kv, api, log }: ScriptContext) {
+  async deposit({ params, kv, tellraw, api, log }: ScriptContext): Promise<{ messages: any[], success?: boolean, newBalance?: number }> {
     const { sender, args } = params;
     const amount = args.amount;
+    let messages = [];
 
     try {
       const config = await this.getConfig(kv);
@@ -213,32 +279,34 @@ export class Economy {
         description: 'XP level deposit'
       });
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully deposited ${amount} XPL. New balance: ${newBalance} XPL`,
         color: "green"
       }));
 
       log(`${sender} deposited ${amount} XPL. New balance: ${newBalance}`);
-      return { success: true, newBalance };
+      return { messages, success: true, newBalance };
     } catch (error) {
       log(`Error in deposit: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
-      return { success: false, error: error.message };
+      return { messages, success: false, error: error.message };
     }
   }
 
+  @Online()
   @Command(['bank', 'withdraw'])
   @Description('Withdraw XP levels from your bank account')
   @Permission('player')
   @Argument([
     { name: 'amount', type: 'integer', description: 'The amount of XP levels to withdraw' }
   ])
-  async withdraw({ params, kv, api, log }: ScriptContext) {
+  async withdraw({ params, kv, tellraw, api, log }: ScriptContext): Promise<{ messages: any[], success?: boolean, newBalance?: number }> {
     const { sender, args } = params;
     const amount = args.amount;
+    let messages = [];
 
     try {
       if (amount <= 0) {
@@ -252,7 +320,6 @@ export class Economy {
 
       const newBalance = currentBalance - amount;
 
-      // Perform withdrawal atomically
       const result = await kv.atomic()
         .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(newBalance)))
         .commit();
@@ -261,10 +328,8 @@ export class Economy {
         throw new Error('Withdrawal failed. Please try again');
       }
 
-      // Add XP levels to the player
       await api.xp('add', sender, amount, 'levels');
 
-      // Record transaction
       await this.addTransaction(kv, sender, {
         timestamp: new Date().toISOString(),
         type: 'withdraw',
@@ -273,20 +338,20 @@ export class Economy {
         description: 'XP level withdrawal'
       });
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully withdrew ${amount} XPL. New balance: ${newBalance} XPL`,
         color: "green"
       }));
 
       log(`${sender} withdrew ${amount} XPL. New balance: ${newBalance}`);
-      return { success: true, newBalance };
+      return { messages, success: true, newBalance };
     } catch (error) {
       log(`Error in withdrawal: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
-      return { success: false, error: error.message };
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -297,9 +362,15 @@ export class Economy {
     { name: 'player', type: 'player', description: 'The player to send XPL to' },
     { name: 'amount', type: 'integer', description: 'The amount of XPL to send' }
   ])
-  async send({ params, kv, api, log }: ScriptContext) {
+  async send({ params, kv, tellraw, log }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    senderNewBalance?: number,
+    receiverNewBalance?: number
+  }> {
     const { sender, args } = params;
     const { player: receiver, amount } = args;
+    let messages = [];
 
     try {
       if (sender === receiver) {
@@ -344,25 +415,30 @@ export class Economy {
       });
 
       // Notify both parties
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Sent ${amount} XPL to ${receiver} (fee: ${config.transferFee} XPL). New balance: ${senderBalance - totalAmount} XPL`,
         color: "green"
       }));
 
-      await api.tellraw(receiver, JSON.stringify({
+      messages = await tellraw(receiver, JSON.stringify({
         text: `Received ${amount} XPL from ${sender}. New balance: ${receiverBalance + amount} XPL`,
         color: "green"
       }));
 
       log(`${sender} sent ${amount} XPL to ${receiver} (fee: ${config.transferFee})`);
-      return { success: true, senderNewBalance: senderBalance - totalAmount, receiverNewBalance: receiverBalance + amount };
+      return {
+        messages,
+        success: true,
+        senderNewBalance: senderBalance - totalAmount,
+        receiverNewBalance: receiverBalance + amount
+      };
     } catch (error) {
       log(`Error in transfer: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
-      return { success: false, error: error.message };
+      return { messages, success: false, error: error.message };
     }
   }
 }

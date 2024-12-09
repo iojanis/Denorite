@@ -3,10 +3,10 @@ import type { ScriptContext } from '../types.ts';
 
 interface TimeControlState {
   enabled: boolean;
-  daySpeed: number;    // Day time multiplier
-  nightSpeed: number;  // Night time multiplier
-  lastTick: number;    // Last server tick when time was updated
-  currentTime: number; // Current minecraft time (0-24000)
+  daySpeed: number;
+  nightSpeed: number;
+  lastTick: number;
+  currentTime: number;
   lastCommandTime: number;
 }
 
@@ -16,13 +16,14 @@ interface TimeControlState {
   servers: 'all'
 })
 export class TimeControl {
-  private readonly UPDATE_INTERVAL = 1000; // Update every second
-  private readonly DAY_START = 0;      // Sunrise starts
-  private readonly NOON = 6000;        // Sun at highest point
-  private readonly NIGHT_START = 12000; // Sunset starts
-  private readonly MIDNIGHT = 18000;    // Moon at highest point
-  private readonly FULL_DAY = 24000;   // Complete day/night cycle
+  private readonly UPDATE_INTERVAL = 1000;
+  private readonly DAY_START = 0;
+  private readonly NOON = 6000;
+  private readonly NIGHT_START = 12000;
+  private readonly MIDNIGHT = 18000;
+  private readonly FULL_DAY = 24000;
 
+  // Helper methods remain unchanged
   private async getState(kv: any): Promise<TimeControlState> {
     const state = await kv.get(['timecontrol', 'state']);
     return state.value || {
@@ -65,7 +66,7 @@ export class TimeControl {
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes % 60}m`;
     } else if (minutes > 0) {
@@ -76,8 +77,7 @@ export class TimeControl {
   }
 
   private calculateRealTimeDuration(speed: number, ticks: number): number {
-    // Convert minecraft ticks to real-time milliseconds at the given speed
-    return (ticks / 20) * 1000 / speed; // 20 ticks per second
+    return (ticks / 20) * 1000 / speed;
   }
 
   @Event('server_started')
@@ -87,7 +87,7 @@ export class TimeControl {
 
       const currentTime = await api.timeQuery("daytime");
       const now = Date.now();
-      
+
       await this.setState(kv, {
         currentTime,
         lastTick: now,
@@ -107,7 +107,7 @@ export class TimeControl {
   async handleServerTick({ api, kv }: ScriptContext): Promise<void> {
     try {
       const state = await this.getState(kv);
-      
+
       if (!state.enabled) {
         return;
       }
@@ -115,14 +115,13 @@ export class TimeControl {
       const now = Date.now();
       const tickDelta = now - state.lastTick;
 
-      // Use appropriate speed based on time of day
       const currentSpeed = this.getCurrentSpeed(state, state.currentTime);
       const timeProgress = (tickDelta / 50) * currentSpeed;
       const newTime = this.normalizeTime(state.currentTime + timeProgress);
 
       if (this.shouldUpdateTime(state)) {
         await api.executeCommand(`time set ${Math.floor(newTime)}`);
-        
+
         await this.setState(kv, {
           currentTime: newTime,
           lastTick: now,
@@ -142,47 +141,57 @@ export class TimeControl {
   @Command(['timecontrol', 'enable'])
   @Description('Enable custom time control')
   @Permission('operator')
-  async enableTimeControl({ kv, api, params }: ScriptContext): Promise<void> {
+  async enableTimeControl({ kv, tellraw, params }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender } = params;
+    let messages = [];
+
     try {
       const currentTime = await api.timeQuery("daytime");
-      await this.setState(kv, { 
+      await this.setState(kv, {
         enabled: true,
         currentTime,
         lastTick: Date.now(),
         lastCommandTime: Date.now()
       });
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: 'Time control enabled',
         color: 'green'
       }));
+
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: 'red'
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['timecontrol', 'disable'])
   @Description('Disable custom time control')
   @Permission('operator')
-  async disableTimeControl({ kv, api, params }: ScriptContext): Promise<void> {
+  async disableTimeControl({ kv, api, tellraw, params }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender } = params;
+    let messages = [];
+
     try {
       await this.setState(kv, { enabled: false });
       await api.executeCommand('gamerule doDaylightCycle true');
-      
-      await api.tellraw(sender, JSON.stringify({
+
+      messages = await tellraw(sender, JSON.stringify({
         text: 'Time control disabled (vanilla time cycle restored)',
         color: 'yellow'
       }));
+
+      return { messages, success: true };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: 'red'
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -193,14 +202,19 @@ export class TimeControl {
     { name: 'type', type: 'string', description: 'day/night/both', optional: true },
     { name: 'speed', type: 'number', description: 'Speed multiplier (1.0 = normal speed)', optional: true }
   ])
-  async setTimeSpeed({ kv, api, params }: ScriptContext): Promise<void> {
+  async setTimeSpeed({ kv, tellraw, params }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    speeds?: { day: number, night: number }
+  }> {
     const { sender, args } = params;
+    let messages = [];
+
     try {
       const state = await this.getState(kv);
 
-      // If no arguments, show current speeds
       if (!args.type) {
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           {
             text: 'Current Speed Settings:\n',
             color: 'gold'
@@ -218,19 +232,18 @@ export class TimeControl {
             color: 'gray'
           }
         ]));
-        return;
+        return { messages, success: true, speeds: { day: state.daySpeed, night: state.nightSpeed } };
       }
 
-      // If speed is not provided, show current speed for specified type
       if (args.speed === undefined) {
-        const speedValue = args.type === 'day' ? state.daySpeed : 
-                         args.type === 'night' ? state.nightSpeed :
-                         `day: ${state.daySpeed}x, night: ${state.nightSpeed}x`;
-        await api.tellraw(sender, JSON.stringify({
+        const speedValue = args.type === 'day' ? state.daySpeed :
+          args.type === 'night' ? state.nightSpeed :
+            `day: ${state.daySpeed}x, night: ${state.nightSpeed}x`;
+        messages = await tellraw(sender, JSON.stringify({
           text: `Current ${args.type} speed: ${speedValue}`,
           color: 'yellow'
         }));
-        return;
+        return { messages, success: true, speeds: { day: state.daySpeed, night: state.nightSpeed } };
       }
 
       const speed = parseFloat(args.speed.toString());
@@ -238,42 +251,58 @@ export class TimeControl {
         throw new Error('Speed must be a positive number');
       }
 
+      let newState: Partial<TimeControlState> = {};
       switch (args.type.toLowerCase()) {
         case 'day':
-          await this.setState(kv, { daySpeed: speed });
+          newState = { daySpeed: speed };
           break;
         case 'night':
-          await this.setState(kv, { nightSpeed: speed });
+          newState = { nightSpeed: speed };
           break;
         case 'both':
-          await this.setState(kv, { daySpeed: speed, nightSpeed: speed });
+          newState = { daySpeed: speed, nightSpeed: speed };
           break;
         default:
           throw new Error('Type must be day, night, or both');
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      await this.setState(kv, newState);
+      const updatedState = await this.getState(kv);
+
+      messages = await tellraw(sender, JSON.stringify({
         text: `${args.type} speed set to ${speed}x`,
         color: 'green'
       }));
+
+      return {
+        messages,
+        success: true,
+        speeds: { day: updatedState.daySpeed, night: updatedState.nightSpeed }
+      };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: 'red'
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['timecontrol', 'status'])
   @Description('Show current time control status')
   @Permission('operator')
-  async showStatus({ kv, api, params }: ScriptContext): Promise<void> {
+  async showStatus({ kv, api, tellraw, params }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    state?: TimeControlState
+  }> {
     const { sender } = params;
+    let messages = [];
+
     try {
       const state = await this.getState(kv);
       const realTime = await api.timeQuery("daytime");
 
-      // Calculate real-time durations
       const dayDuration = this.calculateRealTimeDuration(
         state.daySpeed,
         this.NIGHT_START - this.DAY_START
@@ -284,11 +313,10 @@ export class TimeControl {
       );
       const fullDayDuration = dayDuration + nightDuration;
 
-      // Calculate current phase
       const currentPhase = this.isNightTime(state.currentTime) ? 'Night' : 'Day';
       const currentSpeed = this.getCurrentSpeed(state, state.currentTime);
 
-      await api.tellraw(sender, JSON.stringify([
+      messages = await tellraw(sender, JSON.stringify([
         {
           text: '=== Time Control Status ===\n',
           color: 'gold',
@@ -351,11 +379,14 @@ export class TimeControl {
           color: 'gray'
         }
       ]));
+
+      return { messages, success: true, state };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: 'red'
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -365,13 +396,18 @@ export class TimeControl {
   @Argument([
     { name: 'time', type: 'string', description: 'Time value (0-24000) or day/noon/night/midnight', optional: true }
   ])
-  async setTime({ params, kv, api }: ScriptContext): Promise<void> {
+  async setTime({ params, kv, api, tellraw }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    time?: number
+  }> {
     const { sender, args } = params;
+    let messages = [];
 
     try {
       if (!args.time) {
         const realTime = await api.timeQuery("daytime");
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           {
             text: 'Current Time Info:\n',
             color: 'gold'
@@ -389,7 +425,7 @@ export class TimeControl {
             color: 'gray'
           }
         ]));
-        return;
+        return { messages, success: true, time: realTime };
       }
 
       let targetTime: number;
@@ -428,15 +464,18 @@ export class TimeControl {
       else if (targetTime === this.MIDNIGHT) timeDesc = 'midnight';
       else timeDesc = String(targetTime);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Time set to ${timeDesc}`,
         color: 'green'
       }));
+
+      return { messages, success: true, time: targetTime };
     } catch (error) {
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: 'red'
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 }

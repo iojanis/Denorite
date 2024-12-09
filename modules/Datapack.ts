@@ -37,6 +37,7 @@ interface InstalledDatapack {
   description: 'Manage Minecraft Datapacks from Modrinth'
 })
 export class DatapackManager {
+  // Helper methods remain unchanged
   private async getServerVersion(kv: Deno.Kv): Promise<string> {
     const version = await kv.get(['server', 'version']);
     return version.value as string || '1.21.1';
@@ -110,35 +111,35 @@ export class DatapackManager {
   @Argument([
     { name: 'query', type: 'string', description: 'Search query' }
   ])
-  async search({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async search({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], results?: ModrinthProject[] }> {
     const { sender, args } = params;
     const query = args.query;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
 
     try {
-      // Use Modrinth's search with datapack category filter
       const response = await this.fetchFromModrinth(
         `/search?query=${encodeURIComponent(query)}&facets=[[%22project_type:datapack%22]]`
       );
       const results = await response.json();
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `=== Datapack Search Results for "${query}" ===`,
         color: "gold",
         bold: true
       }));
 
       if (results.hits.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "No results found",
           color: "red"
         }));
-        return;
+        return { messages, results: [] };
       }
 
       for (const hit of results.hits.slice(0, 5)) {
         const datapack = hit as ModrinthProject;
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           { text: "\n" },
           {
             text: datapack.title,
@@ -161,12 +162,14 @@ export class DatapackManager {
       }
 
       log(`Searched for datapacks matching "${query}"`);
+      return { messages, results: results.hits };
     } catch (error) {
       log(`Error searching datapacks: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, error: error.message };
     }
   }
 
@@ -176,58 +179,52 @@ export class DatapackManager {
   @Argument([
     { name: 'slug', type: 'string', description: 'Datapack slug/ID' }
   ])
-  async install({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async install({
+                  params, tellraw, log, kv, files, sendToMinecraft, api
+                }: ScriptContext): Promise<{ messages: any[], success?: boolean, installedDatapack?: InstalledDatapack }> {
     const { sender, args } = params;
     const { slug } = args;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
 
     try {
-      // Check if already installed
       const installed = await kv.get(['installed_datapacks', slug]);
       if (installed.value) {
         throw new Error(`Datapack ${slug} is already installed`);
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Fetching information for ${slug}...`,
         color: "yellow"
       }));
 
-      // Get project info from Modrinth
       const projectResponse = await this.fetchFromModrinth(`/project/${slug}`);
       const project = await projectResponse.json() as ModrinthProject;
 
-
-      // Verify it's a datapack
       if (!project.loaders.includes('datapack')) {
         throw new Error('This project is not a datapack');
       }
 
-      // Get versions
       const versionsResponse = await this.fetchFromModrinth(`/project/${slug}/version`);
       const versions = await versionsResponse.json() as ModrinthVersion[];
 
-      // Find compatible version
       const version = await this.getCompatibleVersion(versions, mcVersion);
       if (!version) {
         throw new Error(`No compatible version found for Minecraft ${mcVersion}`);
       }
 
-      // Get primary file
       const file = version.files.find(f => f.primary);
       if (!file) {
         throw new Error('No primary file found');
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Downloading ${project.title} v${version.version_number}...`,
         color: "yellow"
       }));
 
-      // Download datapack
       await this.downloadDatapackFile(sendToMinecraft, files, file.url, file.filename);
 
-      // Record installation
       const installedDatapack: InstalledDatapack = {
         slug,
         title: project.title,
@@ -237,21 +234,22 @@ export class DatapackManager {
       };
       await this.updateInstalledDatapacks(kv, installedDatapack, 'add');
 
-      // Enable the datapack
       await api.execute(`datapack enable "file/${file.filename}"`);
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully installed and enabled ${project.title} v${version.version_number}`,
         color: "green"
       }));
 
       log(`Installed datapack ${slug} v${version.version_number}`);
+      return { messages, success: true, installedDatapack };
     } catch (error) {
       log(`Error installing datapack: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
@@ -261,9 +259,12 @@ export class DatapackManager {
   @Argument([
     { name: 'slug', type: 'string', description: 'Datapack slug/ID' }
   ])
-  async uninstall({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async uninstall({
+                    params, tellraw, log, kv, files, sendToMinecraft, api
+                  }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
     const { sender, args } = params;
     const { slug } = args;
+    let messages = [];
 
     try {
       const installed = await kv.get(['installed_datapacks', slug]);
@@ -273,61 +274,61 @@ export class DatapackManager {
 
       const datapack = installed.value as InstalledDatapack;
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Uninstalling ${datapack.title}...`,
         color: "yellow"
       }));
 
-      // Disable the datapack first
       await api.execute(`datapack disable "${datapack.filename.replace('.zip', '')}"`);
-
-      // Delete the file
       await this.deleteDatapackFile(sendToMinecraft, files, datapack.filename);
       await this.updateInstalledDatapacks(kv, datapack, 'remove');
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Successfully uninstalled ${datapack.title}`,
         color: "green"
       }));
 
       log(`Uninstalled datapack ${slug}`);
+      return { messages, success: true };
     } catch (error) {
       log(`Error uninstalling datapack: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 
   @Command(['datapack', 'installed'])
   @Description('List installed datapacks')
   @Permission('operator')
-  async list({ params, api, log, kv }: ScriptContext): Promise<void> {
+  async list({ params, tellraw, log, kv }: ScriptContext): Promise<{ messages: any[], datapacks?: InstalledDatapack[] }> {
     const { sender } = params;
+    let messages = [];
+    const datapacks: InstalledDatapack[] = [];
 
     try {
-      const datapacks: InstalledDatapack[] = [];
       for await (const entry of kv.list({ prefix: ['installed_datapacks'] })) {
         datapacks.push(entry.value as InstalledDatapack);
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: "=== Installed Datapacks ===",
         color: "gold",
         bold: true
       }));
 
       if (datapacks.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "\nNo datapacks installed",
           color: "yellow"
         }));
-        return;
+        return { messages, datapacks };
       }
 
       for (const datapack of datapacks) {
-        await api.tellraw(sender, JSON.stringify([
+        messages = await tellraw(sender, JSON.stringify([
           { text: "\n" },
           {
             text: datapack.title,
@@ -348,21 +349,29 @@ export class DatapackManager {
       }
 
       log('Listed installed datapacks');
+      return { messages, datapacks };
     } catch (error) {
       log(`Error listing datapacks: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages };
     }
   }
 
   @Command(['datapack', 'update'])
   @Description('Check for and install datapack updates')
   @Permission('operator')
-  async update({ params, api, log, kv, files, sendToMinecraft }: ScriptContext): Promise<void> {
+  async update({ params, tellraw, log, kv, files, sendToMinecraft, api }: ScriptContext): Promise<{
+    messages: any[],
+    success?: boolean,
+    updatedCount?: number
+  }> {
     const { sender } = params;
     const mcVersion = await this.getServerVersion(kv);
+    let messages = [];
+    let updatedCount = 0;
 
     try {
       const datapacks: InstalledDatapack[] = [];
@@ -371,19 +380,17 @@ export class DatapackManager {
       }
 
       if (datapacks.length === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "No datapacks installed",
           color: "yellow"
         }));
-        return;
+        return { messages, success: true, updatedCount: 0 };
       }
 
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: "Checking for updates...",
         color: "yellow"
       }));
-
-      let updatedCount = 0;
 
       for (const datapack of datapacks) {
         try {
@@ -391,32 +398,22 @@ export class DatapackManager {
           const versions = await versionsResponse.json() as ModrinthVersion[];
           const latestVersion = await this.getCompatibleVersion(versions, mcVersion);
 
-          if (!latestVersion) {
-            continue;
-          }
+          if (!latestVersion) continue;
 
           if (latestVersion.version_number !== datapack.version) {
             const file = latestVersion.files.find(f => f.primary);
             if (!file) continue;
 
-            await api.tellraw(sender, JSON.stringify({
+            messages = await tellraw(sender, JSON.stringify({
               text: `Updating ${datapack.title}...`,
               color: "yellow"
             }));
 
-            // Disable current version
             await api.execute(`datapack disable "${datapack.filename.replace('.zip', '')}"`);
-
-            // Download new version
             await this.downloadDatapackFile(sendToMinecraft, files, file.url, file.filename);
-
-            // Delete old version
             await this.deleteDatapackFile(sendToMinecraft, files, datapack.filename);
-
-            // Enable new version
             await api.execute(`datapack enable "${file.filename.replace('.zip', '')}"`);
 
-            // Update installation record
             const updatedDatapack: InstalledDatapack = {
               ...datapack,
               version: latestVersion.version_number,
@@ -424,7 +421,7 @@ export class DatapackManager {
             };
             await this.updateInstalledDatapacks(kv, updatedDatapack, 'add');
 
-            await api.tellraw(sender, JSON.stringify({
+            messages = await tellraw(sender, JSON.stringify({
               text: `Updated ${datapack.title} from v${datapack.version} to v${latestVersion.version_number}`,
               color: "green"
             }));
@@ -433,7 +430,7 @@ export class DatapackManager {
           }
         } catch (error) {
           log(`Error checking update for ${datapack.slug}: ${error.message}`);
-          await api.tellraw(sender, JSON.stringify({
+          messages = await tellraw(sender, JSON.stringify({
             text: `Error updating ${datapack.title}: ${error.message}`,
             color: "red"
           }));
@@ -441,24 +438,26 @@ export class DatapackManager {
       }
 
       if (updatedCount === 0) {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: "All datapacks are up to date",
           color: "green"
         }));
       } else {
-        await api.tellraw(sender, JSON.stringify({
+        messages = await tellraw(sender, JSON.stringify({
           text: `Updated ${updatedCount} datapack${updatedCount === 1 ? '' : 's'}`,
           color: "green"
         }));
       }
 
       log(`Checked for updates, updated ${updatedCount} datapacks`);
+      return { messages, success: true, updatedCount };
     } catch (error) {
       log(`Error updating datapacks: ${error.message}`);
-      await api.tellraw(sender, JSON.stringify({
+      messages = await tellraw(sender, JSON.stringify({
         text: `Error: ${error.message}`,
         color: "red"
       }));
+      return { messages, success: false, error: error.message };
     }
   }
 }

@@ -168,7 +168,7 @@ export class Zones {
     await bluemap.addMarker("zones", `${markerId}_tp`, "poi", {
       label: `${zone.name} Teleport`,
       position: zone.center,
-      icon: "spawn",
+      icon: "items/ender_pearl.png",
       maxDistance: 1000,
     });
   }

@@ -7,6 +7,7 @@ import {
   Argument,
   Event,
 } from "../decorators.ts";
+import { text, button, container, alert, divider } from "../tellraw-ui.ts";
 import type { ScriptContext } from "../types.ts";
 
 interface TeamData {
@@ -18,22 +19,28 @@ interface TeamData {
   color: string;
   createdAt: string;
   balance: number;
+  isPublic: boolean;
+  description: string;
+  invites: string[];
+  maxMembers: number;
 }
 
-interface TeamOperationQueue {
-  type: "add" | "remove" | "promote" | "demote" | "leave";
+interface TeamInvite {
   teamId: string;
-  player: string;
+  invitedBy: string;
   timestamp: string;
+  expires: string;
 }
 
 @Module({
   name: "Teams",
-  version: "1.0.1",
-  description: "Team management with economy and Leukocyte integration",
+  version: "1.0.2",
+  description: "Advanced team management with economy and zones integration",
 })
 export class Teams {
   private readonly TEAM_CREATION_COST = 1;
+  private readonly DEFAULT_MAX_MEMBERS = 10;
+  private readonly INVITE_EXPIRY_MINUTES = 30;
   private readonly VALID_COLORS = [
     "aqua",
     "black",
@@ -53,16 +60,11 @@ export class Teams {
     "yellow",
   ];
 
-  // Helper methods remain unchanged
   private createSlug(name: string): string {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/(^_|_$)/g, "");
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async getPlayerTeam(
@@ -115,219 +117,174 @@ export class Teams {
     }
   }
 
-  private async removeTeamProtection(api: any, teamId: string): Promise<void> {
-    try {
-      await api.executeCommand(`team remove ${teamId}`);
-    } catch (error) {
-      throw new Error(`Failed to remove team: ${error.message}`);
+  private async cleanExpiredInvites(kv: any, teamId: string): Promise<void> {
+    const teamResult = await kv.get(["teams", teamId]);
+    const team = teamResult.value as TeamData;
+
+    if (!team) return;
+
+    const now = new Date();
+    const invitesResult = await kv.get(["teams", "invites", teamId]);
+    const invites = (invitesResult.value as TeamInvite[]) || [];
+
+    const validInvites = invites.filter(invite => {
+      const expiry = new Date(invite.expires);
+      return expiry > now;
+    });
+
+    if (validInvites.length !== invites.length) {
+      await kv.set(["teams", "invites", teamId], validInvites);
     }
   }
 
-  private async processQueuedOperations(
-    kv: any,
-    api: any,
-    playerName: string,
-  ): Promise<void> {
-    const queueResult = await kv.get(["teams", "operations", playerName]);
-    const operations = (queueResult.value as TeamOperationQueue[]) || [];
-
-    if (operations.length === 0) return;
-
-    for (const op of operations) {
-      const teamResult = await kv.get(["teams", op.teamId]);
-      const team = teamResult.value as TeamData;
-
-      if (!team) continue;
-
-      switch (op.type) {
-        case "add":
-          team.members.push(playerName);
-          await this.updatePlayerTeam(api, op.teamId, playerName);
-          break;
-        case "remove":
-          team.members = team.members.filter((p) => p !== playerName);
-          team.officers = team.officers.filter((p) => p !== playerName);
-          await this.updatePlayerTeam(api, null, playerName, op.teamId);
-          break;
-        case "promote":
-          if (!team.officers.includes(playerName)) {
-            team.officers.push(playerName);
-          }
-          break;
-        case "demote":
-          team.officers = team.officers.filter((p) => p !== playerName);
-          break;
-      }
-
-      await kv.set(["teams", op.teamId], team);
-    }
-
-    await kv.delete(["teams", "operations", playerName]);
-  }
-
-  @Event("player_joined")
-  async handlePlayerJoin({
-    params,
-    kv,
-    api,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { playerName } = params;
-    let messages = [];
-
-    try {
-      await this.delay(1000);
-      await this.processQueuedOperations(kv, api, playerName);
-
-      const teamId = await this.getPlayerTeam(kv, playerName);
-      if (teamId) {
-        const teamResult = await kv.get(["teams", teamId]);
-        const team = teamResult.value as TeamData;
-
-        if (team && team.members.includes(playerName)) {
-          await this.updatePlayerTeam(api, teamId, playerName);
-          messages = await tellraw(playerName, [
-            { text: "Welcome back to ", color: "yellow" },
-            { text: team.name, color: team.color },
-            { text: "!\n", color: "yellow" },
-            {
-              text: "[View Team Info]",
-              color: "green",
-              clickEvent: {
-                action: "run_command",
-                value: "/teams info",
-              },
-              hoverEvent: {
-                action: "show_text",
-                value: "Click to view team details",
-              },
-            },
-          ]);
-        }
-      }
-      return { messages };
-    } catch (error) {
-      log(`Error in handlePlayerJoin for ${playerName}: ${error.message}`);
-      messages = await tellraw(playerName, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
+  private isPlayerInvited(invites: TeamInvite[], playerName: string): boolean {
+    const now = new Date();
+    return invites.some(invite => {
+      const expiry = new Date(invite.expires);
+      return invite.teamId === playerName && expiry > now;
+    });
   }
 
   @Command(["teams"])
   @Description("Team management commands")
   @Permission("player")
-  async teams({
-    params,
-    kv,
-    tellraw,
-  }: ScriptContext): Promise<{ messages: any[] }> {
+  async teams({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
-    let messages = [];
 
     try {
-      messages = await tellraw(sender, [
-        { text: "=== Team Commands ===\n", color: "gold", bold: true },
+      const helpMenu = container([
+        text("=== Team Commands ===\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
 
-        { text: "/teams create <name>", color: "yellow" },
-        { text: " - Create a new team (costs 1 XPL)\n", color: "gray" },
+        button("/teams create <name> <description>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams create ",
+          },
+        }),
+        text(" - Create a new team (costs 1 XPL)\n", {
+          style: { color: "gray" },
+        }),
 
-        {
-          text: "/teams info",
-          color: "yellow",
-          clickEvent: {
+        button("/teams info", {
+          variant: "ghost",
+          onClick: {
             action: "run_command",
             value: "/teams info",
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view team info",
-          },
-        },
-        { text: " - View your team's information\n", color: "gray" },
+        }),
+        text(" - View your team's information\n", {
+          style: { color: "gray" },
+        }),
 
-        {
-          text: "/teams list",
-          color: "yellow",
-          clickEvent: {
+        button("/teams list", {
+          variant: "ghost",
+          onClick: {
             action: "run_command",
             value: "/teams list",
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to list all teams",
-          },
-        },
-        { text: " - List all teams\n", color: "gray" },
+        }),
+        text(" - Browse all teams\n", { style: { color: "gray" } }),
 
-        { text: "/teams invite <player>", color: "yellow" },
-        { text: " - Invite a player to your team\n", color: "gray" },
-
-        { text: "/teams join <teamId>", color: "yellow" },
-        { text: " - Join a team after being invited\n", color: "gray" },
-
-        {
-          text: "/teams leave",
-          color: "yellow",
-          clickEvent: {
-            action: "run_command",
-            value: "/teams leave",
-          },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to leave your team",
-          },
-        },
-        { text: " - Leave your current team\n", color: "gray" },
-
-        { text: "/teams promote <player>", color: "yellow" },
-        { text: " - Promote a team member to officer\n", color: "gray" },
-
-        { text: "/teams demote <player>", color: "yellow" },
-        { text: " - Demote a team officer to member\n", color: "gray" },
-
-        { text: "/teams transfer <player>", color: "yellow" },
-        { text: " - Transfer team leadership\n", color: "gray" },
-
-        { text: "/teams kick <player>", color: "yellow" },
-        { text: " - Kick a player from your team\n", color: "gray" },
-
-        { text: "/teams deposit <amount>", color: "yellow" },
-        { text: " - Deposit XPL into team bank\n", color: "gray" },
-
-        { text: "/teams withdraw <amount>", color: "yellow" },
-        { text: " - Withdraw XPL from team bank\n", color: "gray" },
-
-        { text: "\nOperator Commands:\n", color: "gold" },
-        { text: "/teams color <team> <color>", color: "yellow" },
-        { text: " - Set team color", color: "gray" },
-
-        { text: "\n\n", color: "white" },
-        {
-          text: "[Suggest Command]",
-          color: "green",
-          clickEvent: {
+        button("/teams invite <player>", {
+          variant: "ghost",
+          onClick: {
             action: "suggest_command",
-            value: "/teams ",
+            value: "/teams invite ",
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to write a team command",
+        }),
+        text(" - Invite a player to your team\n", {
+          style: { color: "gray" },
+        }),
+
+        button("/teams join <teamId>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams join ",
           },
-        },
+        }),
+        text(" - Join a public team or accept invite\n", {
+          style: { color: "gray" },
+        }),
+
+        button("/teams settings", {
+          variant: "ghost",
+          onClick: {
+            action: "run_command",
+            value: "/teams settings",
+          },
+        }),
+        text(" - Manage team settings\n", { style: { color: "gray" } }),
+
+        divider(),
+        text("Team Management:\n", { style: { color: "yellow" } }),
+
+        button("/teams promote <player>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams promote ",
+          },
+        }),
+        text(" - Promote to officer\n", { style: { color: "gray" } }),
+
+        button("/teams demote <player>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams demote ",
+          },
+        }),
+        text(" - Demote from officer\n", { style: { color: "gray" } }),
+
+        button("/teams kick <player>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams kick ",
+          },
+        }),
+        text(" - Remove from team\n", { style: { color: "gray" } }),
+
+        divider(),
+        text("Team Economy:\n", { style: { color: "yellow" } }),
+
+        button("/teams deposit <amount>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams deposit ",
+          },
+        }),
+        text(" - Add XPL to team bank\n", { style: { color: "gray" } }),
+
+        button("/teams withdraw <amount>", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams withdraw ",
+          },
+        }),
+        text(" - Take XPL from team bank\n", { style: { color: "gray" } }),
       ]);
 
+      const messages = await tellraw(
+        sender,
+        helpMenu.render({ platform: "minecraft", player: sender }),
+      );
       return { messages };
     } catch (error) {
-      messages = await tellraw(
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      const messages = await tellraw(
         sender,
-        JSON.stringify({
-          text: `Error: ${error.message}`,
-          color: "red",
-        }),
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages, error: error.message };
     }
@@ -336,7 +293,10 @@ export class Teams {
   @Command(["teams", "create"])
   @Description("Create a new team (costs 1 XPL)")
   @Permission("player")
-  @Argument([{ name: "name", type: "string", description: "Team name" }])
+  @Argument([
+    { name: "name", type: "string", description: "Team name" },
+    { name: "description", type: "string", description: "Team description" },
+  ])
   async createTeam({
     params,
     kv,
@@ -345,21 +305,11 @@ export class Teams {
     log,
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
-    const teamName = args.name;
-    const teamId = this.createSlug(teamName);
-    let messages = [];
+    const { name, description } = args;
+    const teamId = this.createSlug(name);
 
     try {
-      const currentTeam = await this.getPlayerTeam(kv, sender);
-      if (currentTeam) {
-        throw new Error("You are already in a team");
-      }
-
-      const existingTeam = await kv.get(["teams", teamId]);
-      if (existingTeam.value) {
-        throw new Error("A team with this name already exists");
-      }
-
+      // Check if player has enough XPL
       const balanceResult = await kv.get([
         "plugins",
         "economy",
@@ -374,67 +324,100 @@ export class Teams {
         );
       }
 
-      await this.setupTeamProtection(api, teamId, teamName);
+      // Check if team name exists
+      const existingTeam = await kv.get(["teams", teamId]);
+      if (existingTeam.value) {
+        throw new Error("A team with this name already exists");
+      }
 
+      // Create team data
       const team: TeamData = {
         id: teamId,
-        name: teamName,
+        name,
+        description,
         leader: sender,
         officers: [],
         members: [sender],
         color: "white",
         createdAt: new Date().toISOString(),
         balance: 0,
+        isPublic: false,
+        invites: [],
+        maxMembers: this.DEFAULT_MAX_MEMBERS,
       };
+
+      // Setup team protection and execute transaction
+      await this.setupTeamProtection(api, teamId, name);
 
       const result = await kv
         .atomic()
         .check(existingTeam)
+        .check({
+          key: ["plugins", "economy", "balances", sender],
+          versionstamp: balanceResult.versionstamp,
+        })
         .set(["teams", teamId], team)
         .set(["players", sender, "team"], teamId)
-        .mutate({
-          type: "sum",
-          key: ["plugins", "economy", "balances", sender],
-          value: new Deno.KvU64(BigInt(balance - this.TEAM_CREATION_COST)),
-        })
+        .set(
+          ["plugins", "economy", "balances", sender],
+          new Deno.KvU64(BigInt(balance - this.TEAM_CREATION_COST)),
+        )
         .commit();
 
       if (!result.ok) {
         await this.removeTeamProtection(api, teamId);
-        throw new Error("Failed to create team");
+        throw new Error("Failed to create team - transaction failed");
       }
 
       await this.updatePlayerTeam(api, teamId, sender);
 
-      messages = await tellraw(sender, [
-        { text: "=== Team Created ===\n", color: "gold", bold: true },
-        { text: "Name: ", color: "gray" },
-        { text: teamName + "\n", color: "white" },
-        { text: "Cost: ", color: "gray" },
-        { text: `${this.TEAM_CREATION_COST} XPL\n`, color: "gold" },
-        { text: "\n" },
-        {
-          text: "[View Team Info]",
-          color: "green",
-          clickEvent: {
+      const successMsg = container([
+        text("🎉 Team Created Successfully! 🎉\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text("Name: ", { style: { color: "gray" } }),
+        text(name + "\n", { style: { color: "white", styles: ["bold"] } }),
+        text("Description: ", { style: { color: "gray" } }),
+        text(description + "\n", { style: { color: "white" } }),
+        text("Cost: ", { style: { color: "gray" } }),
+        text(`${this.TEAM_CREATION_COST} XPL\n`, { style: { color: "gold" } }),
+        divider(),
+        text("Quick Actions:\n", { style: { color: "yellow" } }),
+        button("Team Settings", {
+          variant: "outline",
+          onClick: {
             action: "run_command",
-            value: "/teams info",
+            value: "/teams settings",
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view team details",
+        }),
+        text(" "),
+        button("Invite Players", {
+          variant: "success",
+          onClick: {
+            action: "suggest_command",
+            value: "/teams invite ",
           },
-        },
+        }),
       ]);
 
-      log(`Player ${sender} created team ${teamName} (${teamId})`);
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
+
+      log(`Player ${sender} created team ${name} (${teamId})`);
       return { messages };
     } catch (error) {
-      log(`Error creating team by ${sender}: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      log(`Error creating team: ${error.message}`);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Team Creation Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
@@ -448,15 +431,14 @@ export class Teams {
   async invitePlayer({
     params,
     kv,
-    api,
     tellraw,
     log,
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
     const targetPlayer = args.player;
-    let messages = [];
 
     try {
+      // Get team data
       const teamId = await this.getPlayerTeam(kv, sender);
       if (!teamId) {
         throw new Error("You are not in a team");
@@ -465,113 +447,125 @@ export class Teams {
       const teamResult = await kv.get(["teams", teamId]);
       const team = teamResult.value as TeamData;
 
+      // Check permissions
       if (team.leader !== sender && !team.officers.includes(sender)) {
         throw new Error("Only team leaders and officers can invite players");
       }
 
-      const targetTeam = await this.getPlayerTeam(kv, targetPlayer);
-      if (targetTeam) {
-        throw new Error("This player is already in a team");
+      // Check team capacity
+      if (team.members.length >= team.maxMembers) {
+        throw new Error("Team has reached maximum member capacity");
       }
 
-      // Send invitation to target player
-      await tellraw(targetPlayer, [
-        { text: "=== Team Invitation ===\n", color: "gold", bold: true },
-        { text: `${sender} has invited you to join `, color: "yellow" },
-        { text: team.name, color: team.color },
-        { text: "\n\n" },
-        {
-          text: "[Accept]",
-          color: "green",
-          clickEvent: {
+      // Check if player is already a member
+      if (team.members.includes(targetPlayer)) {
+        throw new Error("This player is already a member of your team");
+      }
+
+      // Clean expired invites
+      await this.cleanExpiredInvites(kv, teamId);
+
+      // Get current invites
+      const invitesResult = await kv.get(["teams", "invites", teamId]);
+      const invites = (invitesResult.value as TeamInvite[]) || [];
+
+      // Check if already invited
+      if (this.isPlayerInvited(invites, targetPlayer)) {
+        throw new Error("This player already has a pending invitation");
+      }
+
+      // Create new invite
+      const invite: TeamInvite = {
+        teamId,
+        invitedBy: sender,
+        timestamp: new Date().toISOString(),
+        expires: new Date(
+          Date.now() + this.INVITE_EXPIRY_MINUTES * 60000,
+        ).toISOString(),
+      };
+
+      invites.push(invite);
+      await kv.set(["teams", "invites", teamId], invites);
+
+      // Send invitation message
+      const inviteMsg = container([
+        text("🎫 Team Invitation 🎫\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text("You've been invited to join ", { style: { color: "gray" } }),
+        text(team.name + "\n", {
+          style: { color: team.color, styles: ["bold"] },
+        }),
+        text("Invited by: ", { style: { color: "gray" } }),
+        text(sender + "\n", { style: { color: "green" } }),
+        text("Description: ", { style: { color: "gray" } }),
+        text(team.description + "\n", { style: { color: "white" } }),
+        text("Members: ", { style: { color: "gray" } }),
+        text(`${team.members.length}/${team.maxMembers}\n`, {
+          style: { color: "aqua" },
+        }),
+        divider(),
+        button("Accept Invitation", {
+          variant: "success",
+          onClick: {
             action: "run_command",
-            value: `/teams join ${team.id}`,
+            value: `/teams join ${teamId}`,
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to join team",
-          },
-        },
-        { text: " " },
-        {
-          text: "[Decline]",
-          color: "red",
-          clickEvent: {
+        }),
+        text(" "),
+        button("Decline", {
+          variant: "destructive",
+          onClick: {
             action: "run_command",
-            value: `/teams decline ${team.id}`,
+            value: `/teams decline ${teamId}`,
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to decline invitation",
-          },
-        },
+        }),
+        text("\n"),
+        text("This invitation expires in ", { style: { color: "gray" } }),
+        text(`${this.INVITE_EXPIRY_MINUTES} minutes`, {
+          style: { color: "yellow" },
+        }),
       ]);
 
-      messages = await tellraw(sender, [
-        { text: "Invitation sent to ", color: "green" },
-        { text: targetPlayer, color: "yellow" },
+      await tellraw(
+        targetPlayer,
+        inviteMsg.render({ platform: "minecraft", player: targetPlayer }),
+      );
+
+      // Confirm to sender
+      const confirmMsg = container([
+        text("Invitation sent to ", { style: { color: "green" } }),
+        text(targetPlayer, { style: { color: "yellow" } }),
+        text("\nExpires in ", { style: { color: "gray" } }),
+        text(`${this.INVITE_EXPIRY_MINUTES} minutes`, {
+          style: { color: "yellow" },
+        }),
       ]);
+
+      const messages = await tellraw(
+        sender,
+        confirmMsg.render({ platform: "minecraft", player: sender }),
+      );
 
       log(`${sender} invited ${targetPlayer} to team ${team.name}`);
       return { messages };
     } catch (error) {
       log(`Error in team invite: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  @Command(["teams", "decline"])
-  @Description("Decline a team invitation")
-  @Permission("player")
-  @Argument([
-    { name: "teamId", type: "string", description: "Team ID to decline" },
-  ])
-  async declineInvite({
-    params,
-    kv,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender, args } = params;
-    const teamId = args.teamId;
-    let messages = [];
-
-    try {
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
-
-      if (!team) {
-        throw new Error("Team not found");
-      }
-
-      messages = await tellraw(sender, [
-        { text: "You declined the invitation to join ", color: "yellow" },
-        { text: team.name, color: team.color },
-      ]);
-
-      await tellraw(team.leader, [
-        { text: sender, color: "yellow" },
-        { text: " declined the team invitation", color: "yellow" },
-      ]);
-
-      log(`${sender} declined invitation to team ${team.name}`);
-      return { messages };
-    } catch (error) {
-      log(`Error declining team invite: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Invitation Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
 
   @Command(["teams", "join"])
-  @Description("Join a team after being invited")
+  @Description("Join a team (public or invited)")
   @Permission("player")
   @Argument([
     { name: "teamId", type: "string", description: "Team ID to join" },
@@ -584,15 +578,9 @@ export class Teams {
     log,
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
-    const teamId = args.teamId;
-    let messages = [];
+    const { teamId } = args;
 
     try {
-      const currentTeam = await this.getPlayerTeam(kv, sender);
-      if (currentTeam) {
-        throw new Error("You are already in a team");
-      }
-
       const teamResult = await kv.get(["teams", teamId]);
       const team = teamResult.value as TeamData;
 
@@ -600,8 +588,30 @@ export class Teams {
         throw new Error("Team not found");
       }
 
-      team.members.push(sender);
+      // Check if team is full
+      if (team.members.length >= team.maxMembers) {
+        throw new Error("This team has reached its maximum member capacity");
+      }
 
+      // Check if player can join
+      if (!team.isPublic) {
+        const invitesResult = await kv.get(["teams", "invites", teamId]);
+        const invites = (invitesResult.value as TeamInvite[]) || [];
+
+        if (!this.isPlayerInvited(invites, sender)) {
+          throw new Error("This team is private and requires an invitation to join");
+        }
+      }
+
+      // Get current team if any
+      const currentTeamId = await this.getPlayerTeam(kv, sender);
+
+      // Add to team members if not already a member
+      if (!team.members.includes(sender)) {
+        team.members.push(sender);
+      }
+
+      // Update team and player data
       const result = await kv
         .atomic()
         .set(["teams", teamId], team)
@@ -612,141 +622,82 @@ export class Teams {
         throw new Error("Failed to join team");
       }
 
-      await this.updatePlayerTeam(api, teamId, sender);
+      // Update game team if needed
+      if (currentTeamId !== teamId) {
+        await this.updatePlayerTeam(api, teamId, sender, currentTeamId);
+      }
 
-      messages = await tellraw(sender, [
-        { text: "=== Welcome to ", color: "gold" },
-        { text: team.name, color: team.color },
-        { text: " ===\n", color: "gold" },
-        {
-          text: "[View Team Info]",
-          color: "green",
-          clickEvent: {
+      // Clean up invitation if exists
+      await kv.delete(["teams", "invites", teamId, sender]);
+
+      // Success message
+      const successMsg = container([
+        text("✨ Welcome to ", { style: { color: "green" } }),
+        text(team.name, {
+          style: { color: team.color, styles: ["bold"] },
+        }),
+        text("! ✨\n", { style: { color: "green" } }),
+        text("Members: ", { style: { color: "gray" } }),
+        text(`${team.members.length}/${team.maxMembers}\n`, {
+          style: { color: "aqua" },
+        }),
+        divider(),
+        button("View Team Info", {
+          variant: "outline",
+          onClick: {
             action: "run_command",
             value: "/teams info",
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view team details",
-          },
-        },
+        }),
+      ]);
+
+      // Notify other team members
+      const joinMsg = container([
+        text(sender, { style: { color: "yellow" } }),
+        text(" has joined the team!", { style: { color: "green" } }),
       ]);
 
       for (const member of team.members) {
         if (member !== sender) {
-          await tellraw(member, [
-            { text: sender, color: "yellow" },
-            { text: " has joined the team!", color: team.color },
-          ]);
+          await tellraw(
+            member,
+            joinMsg.render({ platform: "minecraft", player: member }),
+          );
         }
       }
+
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
 
       log(`${sender} joined team ${team.name}`);
       return { messages };
     } catch (error) {
-      log(`Error in team join: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      log(`Error joining team: ${error.message}`);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Failed to Join Team",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
 
-  @Command(["teams", "leave"])
-  @Description("Leave your current team")
+  @Command(["teams", "settings"])
+  @Description("Manage team settings")
   @Permission("player")
-  async leaveTeam({
+  async teamSettings({
     params,
     kv,
-    api,
     tellraw,
     log,
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
-    let messages = [];
-
-    try {
-      const teamId = await this.getPlayerTeam(kv, sender);
-      if (!teamId) {
-        throw new Error("You are not in a team");
-      }
-
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
-
-      if (team.leader === sender && team.members.length > 1) {
-        throw new Error("Team leaders must transfer leadership before leaving");
-      }
-
-      team.members = team.members.filter((m) => m !== sender);
-      team.officers = team.officers.filter((o) => o !== sender);
-
-      if (team.members.length === 0) {
-        await kv
-          .atomic()
-          .delete(["teams", teamId])
-          .delete(["players", sender, "team"])
-          .commit();
-
-        await this.removeTeamProtection(api, teamId);
-
-        messages = await tellraw(sender, [
-          { text: "You left the team. ", color: "yellow" },
-          {
-            text: "Team has been disbanded as it is now empty.",
-            color: "gold",
-          },
-        ]);
-      } else {
-        await kv
-          .atomic()
-          .set(["teams", teamId], team)
-          .delete(["players", sender, "team"])
-          .commit();
-
-        await this.updatePlayerTeam(api, null, sender, teamId);
-
-        messages = await tellraw(sender, [
-          { text: "You have left ", color: "yellow" },
-          { text: team.name, color: team.color },
-        ]);
-
-        for (const member of team.members) {
-          await tellraw(member, [
-            { text: sender, color: "yellow" },
-            { text: " has left the team", color: team.color },
-          ]);
-        }
-      }
-
-      log(`${sender} left team ${team.name}`);
-      return { messages };
-    } catch (error) {
-      log(`Error in team leave: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  @Command(["teams", "promote"])
-  @Description("Promote a team member to officer")
-  @Permission("player")
-  @Argument([
-    { name: "player", type: "player", description: "Player to promote" },
-  ])
-  async promotePlayer({
-    params,
-    kv,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender, args } = params;
-    const targetPlayer = args.player;
-    let messages = [];
 
     try {
       const teamId = await this.getPlayerTeam(kv, sender);
@@ -758,233 +709,358 @@ export class Teams {
       const team = teamResult.value as TeamData;
 
       if (team.leader !== sender) {
-        throw new Error("Only team leaders can promote members");
+        throw new Error("Only team leaders can modify team settings");
       }
 
-      if (!team.members.includes(targetPlayer)) {
-        throw new Error("This player is not in your team");
-      }
+      const settingsMenu = container([
+        text("⚙️ Team Settings ⚙️\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text("Team: ", { style: { color: "gray" } }),
+        text(team.name + "\n", {
+          style: { color: team.color, styles: ["bold"] },
+        }),
+        divider(),
 
-      if (team.officers.includes(targetPlayer)) {
-        throw new Error("This player is already an officer");
-      }
-
-      const operation: TeamOperationQueue = {
-        type: "promote",
-        teamId,
-        player: targetPlayer,
-        timestamp: new Date().toISOString(),
-      };
-
-      await kv.set(["teams", "operations", targetPlayer], [operation]);
-
-      team.officers.push(targetPlayer);
-      await kv.set(["teams", teamId], team);
-
-      messages = await tellraw(sender, [
-        { text: "Promoted ", color: "green" },
-        { text: targetPlayer, color: "yellow" },
-        { text: " to team officer", color: "green" },
-      ]);
-
-      await tellraw(targetPlayer, [
-        { text: "=== Promotion ===\n", color: "gold", bold: true },
-        {
-          text: "You have been promoted to team officer in ",
-          color: team.color,
-        },
-        { text: team.name, color: team.color, bold: true },
-        { text: "!\n", color: team.color },
-        {
-          text: "[View Team Info]",
-          color: "green",
-          clickEvent: {
+        // Public/Private Toggle
+        text("Visibility: ", { style: { color: "gray" } }),
+        button(team.isPublic ? "Public" : "Private", {
+          variant: team.isPublic ? "success" : "outline",
+          onClick: {
             action: "run_command",
-            value: "/teams info",
+            value: `/teams modify ${teamId} visibility ${!team.isPublic}`,
           },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view team details",
+        }),
+        text(" - Allow players to join without invitation\n", {
+          style: { color: "gray" },
+        }),
+
+        // Description
+        text("Description: ", { style: { color: "gray" } }),
+        text(team.description + "\n", { style: { color: "white" } }),
+        button("Change Description", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: `/teams modify ${teamId} description `,
           },
-        },
+        }),
+        text("\n"),
+
+        // Color
+        text("Team Color: ", { style: { color: "gray" } }),
+        text("Current: ", { style: { color: team.color } }),
+        button("Change", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: `/teams modify ${teamId} color `,
+          },
+        }),
+        text("\n"),
+
+        // Member Limit
+        text("Member Limit: ", { style: { color: "gray" } }),
+        text(`${team.members.length}/${team.maxMembers}\n`, {
+          style: { color: "aqua" },
+        }),
+        button("Change Limit", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: `/teams modify ${teamId} maxmembers `,
+          },
+        }),
+        text("\n"),
+
+        divider(),
+        text("Member Management:\n", { style: { color: "yellow" } }),
+        button("View Members", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: "/teams members",
+          },
+        }),
+        text(" "),
+        button("Pending Invites", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: "/teams invites",
+          },
+        }),
       ]);
 
-      log(`${sender} promoted ${targetPlayer} to officer in team ${team.name}`);
+      const messages = await tellraw(
+        sender,
+        settingsMenu.render({ platform: "minecraft", player: sender }),
+      );
       return { messages };
     } catch (error) {
-      log(`Error in team promotion: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
 
-  @Command(["teams", "demote"])
-  @Description("Demote a team officer to member")
+  @Command(["teams", "modify"])
+  @Description("Modify team settings")
   @Permission("player")
   @Argument([
-    { name: "player", type: "player", description: "Player to demote" },
-  ])
-  async demotePlayer({
-    params,
-    kv,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender, args } = params;
-    const targetPlayer = args.player;
-    let messages = [];
-
-    try {
-      const teamId = await this.getPlayerTeam(kv, sender);
-      if (!teamId) {
-        throw new Error("You are not in a team");
-      }
-
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
-
-      if (team.leader !== sender) {
-        throw new Error("Only team leaders can demote officers");
-      }
-
-      if (!team.officers.includes(targetPlayer)) {
-        throw new Error("This player is not an officer");
-      }
-
-      const operation: TeamOperationQueue = {
-        type: "demote",
-        teamId,
-        player: targetPlayer,
-        timestamp: new Date().toISOString(),
-      };
-
-      await kv.set(["teams", "operations", targetPlayer], [operation]);
-
-      team.officers = team.officers.filter((o) => o !== targetPlayer);
-      await kv.set(["teams", teamId], team);
-
-      messages = await tellraw(sender, [
-        { text: "Demoted ", color: "yellow" },
-        { text: targetPlayer, color: "gold" },
-        { text: " to team member", color: "yellow" },
-      ]);
-
-      await tellraw(targetPlayer, [
-        { text: "You have been demoted to team member in ", color: team.color },
-        { text: team.name, color: team.color, bold: true },
-      ]);
-
-      log(`${sender} demoted ${targetPlayer} in team ${team.name}`);
-      return { messages };
-    } catch (error) {
-      log(`Error in team demotion: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  @Command(["teams", "transfer"])
-  @Description("Transfer team leadership to another member")
-  @Permission("player")
-  @Argument([
+    { name: "teamId", type: "string", description: "Team ID" },
     {
-      name: "newLeader",
-      type: "player",
-      description: "Player to transfer leadership to",
+      name: "setting",
+      type: "string",
+      description: "Setting to modify (visibility/description/color/maxmembers)",
     },
+    { name: "value", type: "string", description: "New value" },
   ])
-  async transferLeadership({
-    params,
-    kv,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender, args } = params;
-    const newLeader = args.newLeader;
-    let messages = [];
-
-    try {
-      const teamId = await this.getPlayerTeam(kv, sender);
-      if (!teamId) {
-        throw new Error("You are not in a team");
-      }
-
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
-
-      if (team.leader !== sender) {
-        throw new Error("Only the team leader can transfer leadership");
-      }
-
-      if (!team.members.includes(newLeader)) {
-        throw new Error("That player is not in your team");
-      }
-
-      team.leader = newLeader;
-      if (!team.officers.includes(sender)) {
-        team.officers.push(sender);
-      }
-
-      await kv.set(["teams", teamId], team);
-
-      messages = await tellraw(sender, [
-        { text: "=== Leadership Transfer ===\n", color: "gold", bold: true },
-        { text: "You transferred leadership to ", color: "yellow" },
-        { text: newLeader, color: "green" },
-        { text: "\nYou are now a team officer", color: "yellow" },
-      ]);
-
-      for (const member of team.members) {
-        if (member !== sender) {
-          await tellraw(member, [
-            { text: "=== Team Update ===\n", color: "gold", bold: true },
-            { text: "New team leader: ", color: "yellow" },
-            { text: newLeader, color: team.color, bold: true },
-          ]);
-        }
-      }
-
-      log(`${sender} transferred team ${team.name} leadership to ${newLeader}`);
-      return { messages };
-    } catch (error) {
-      log(`Error in leadership transfer: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  @Command(["teams", "color"])
-  @Description("Set team color (operators only)")
-  @Permission("operator")
-  @Argument([
-    { name: "team", type: "string", description: "Team ID" },
-    { name: "color", type: "string", description: "Team color" },
-  ])
-  async setTeamColor({
+  async modifyTeam({
     params,
     kv,
     api,
     tellraw,
     log,
   }: ScriptContext): Promise<{ messages: any[] }> {
-    const { args } = params;
-    const { team: teamId, color } = args;
-    let messages = [];
+    const { sender, args } = params;
+    const { teamId, setting, value } = args;
 
     try {
-      if (!this.VALID_COLORS.includes(color)) {
-        throw new Error(
-          `Invalid color. Valid colors: ${this.VALID_COLORS.join(", ")}`,
+      const teamResult = await kv.get(["teams", teamId]);
+      const team = teamResult.value as TeamData;
+
+      if (!team) {
+        throw new Error("Team not found");
+      }
+
+      if (team.leader !== sender) {
+        throw new Error("Only the team leader can modify settings");
+      }
+
+      switch (setting.toLowerCase()) {
+        case "visibility":
+          team.isPublic = value.toLowerCase() === "true";
+          break;
+        case "description":
+          team.description = value;
+          break;
+        case "color":
+          if (!this.VALID_COLORS.includes(value)) {
+            throw new Error(
+              `Invalid color. Valid colors: ${this.VALID_COLORS.join(", ")}`,
+            );
+          }
+          team.color = value;
+          await this.updateTeamDisplay(api, teamId, team.name, value);
+          break;
+        case "maxmembers":
+          const newLimit = parseInt(value);
+          if (isNaN(newLimit) || newLimit < team.members.length) {
+            throw new Error(
+              "Invalid member limit. Must be greater than current member count.",
+            );
+          }
+          team.maxMembers = newLimit;
+          break;
+        default:
+          throw new Error(
+            "Invalid setting. Use visibility, description, color, or maxmembers",
+          );
+      }
+
+      await kv.set(["teams", teamId], team);
+
+      const successMsg = container([
+        text("Team Setting Updated\n", {
+          style: { color: "green", styles: ["bold"] },
+        }),
+        text("Setting: ", { style: { color: "gray" } }),
+        text(setting + "\n", { style: { color: "yellow" } }),
+        text("New Value: ", { style: { color: "gray" } }),
+        text(value + "\n", { style: { color: "aqua" } }),
+        divider(),
+        button("Back to Settings", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: "/teams settings",
+          },
+        }),
+      ]);
+
+      // Notify team members
+      const updateMsg = container([
+        text("Team Update: ", { style: { color: "yellow" } }),
+        text(`${setting} has been changed to `, { style: { color: "gray" } }),
+        text(value, { style: { color: "aqua" } }),
+      ]);
+
+      for (const member of team.members) {
+        if (member !== sender) {
+          await tellraw(
+            member,
+            updateMsg.render({ platform: "minecraft", player: member }),
+          );
+        }
+      }
+
+      log(`${sender} modified team ${team.name} setting: ${setting}=${value}`);
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      log(`Error modifying team: ${error.message}`);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Modification Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages, error: error.message };
+    }
+  }
+
+  @Command(["teams", "list"])
+  @Description("List all teams")
+  @Permission("player")
+  async listTeams({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+
+    try {
+      const teams = [];
+      const entriesIterator = kv.list({ prefix: ["teams"] });
+      for await (const entry of entriesIterator) {
+        if (entry.key[1] !== "invites" && entry.key[1] !== "operations") {
+          teams.push(entry.value as TeamData);
+        }
+      }
+
+      if (teams.length === 0) {
+        const noTeamsMsg = container([
+          text("No teams have been created yet!", {
+            style: { color: "yellow" },
+          }),
+        ]);
+        const messages = await tellraw(
+          sender,
+          noTeamsMsg.render({ platform: "minecraft", player: sender }),
         );
+        return { messages };
+      }
+
+      const teamsList = container([
+        text("📋 Teams List 📋\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text(`${teams.length} teams found\n`, { style: { color: "gray" } }),
+        divider(),
+        ...teams.flatMap((team) => [
+          text(team.name + " ", {
+            style: { color: team.color, styles: ["bold"] }}),
+          text(team.isPublic ? "🌐" : "🔒", {
+            style: { color: "gray" },
+          }),
+          text("\n"),
+
+          // Member count
+          text("Members: ", { style: { color: "gray" } }),
+          text(`${team.members.length}/${team.maxMembers}\n`, {
+            style: { color: "aqua" },
+          }),
+
+          // Description
+          text("Description: ", { style: { color: "gray" } }),
+          text(team.description + "\n", { style: { color: "white" } }),
+
+          // Quick actions
+          button("Info", {
+            variant: "outline",
+            onClick: {
+              action: "run_command",
+              value: `/teams info ${team.id}`,
+            },
+          }),
+          text(" "),
+          ...(team.isPublic
+            ? [
+                button("Join", {
+                  variant: "success",
+                  onClick: {
+                    action: "run_command",
+                    value: `/teams join ${team.id}`,
+                  },
+                }),
+              ]
+            : [
+                text("(Private Team)", {
+                  style: { color: "gray" },
+                }),
+              ]),
+          divider(),
+        ]),
+      ]);
+
+      const messages = await tellraw(
+        sender,
+        teamsList.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages, error: error.message };
+    }
+  }
+
+  @Command(["teams", "info"])
+  @Description("View detailed team information")
+  @Permission("player")
+  @Argument([
+    {
+      name: "teamId",
+      type: "string",
+      description: "Team ID (optional)",
+      required: false,
+    },
+  ])
+  async teamInfo({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender, args } = params;
+
+    try {
+      let teamId = args.teamId;
+      if (!teamId) {
+        teamId = await this.getPlayerTeam(kv, sender);
+        if (!teamId) {
+          throw new Error("You are not in a team");
+        }
       }
 
       const teamResult = await kv.get(["teams", teamId]);
@@ -994,31 +1070,108 @@ export class Teams {
         throw new Error("Team not found");
       }
 
-      await api.executeCommand(`team modify ${teamId} color ${color}`);
-      team.color = color;
-      await kv.set(["teams", teamId], team);
+      // Format creation date
+      const creationDate = new Date(team.createdAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 
-      messages = await tellraw(team.leader, [
-        { text: "=== Team Update ===\n", color: "gold", bold: true },
-        { text: "Team color has been updated to ", color: "yellow" },
-        { text: color, color: color, bold: true },
+      const teamInfo = container([
+        text(`${team.name}\n`, {
+          style: { color: team.color, styles: ["bold"] },
+        }),
+        text(team.isPublic ? "🌐 Public Team" : "🔒 Private Team", {
+          style: { color: team.isPublic ? "green" : "gray" },
+        }),
+        text("\n"),
+        divider(),
+
+        // Description
+        text("📝 Description\n", { style: { color: "yellow" } }),
+        text(team.description + "\n\n", { style: { color: "white" } }),
+
+        // Leadership
+        text("👑 Leadership\n", { style: { color: "gold" } }),
+        text("Leader: ", { style: { color: "gray" } }),
+        text(team.leader + "\n", { style: { color: "yellow" } }),
+        text("Officers: ", { style: { color: "gray" } }),
+        text(team.officers.join(", ") || "None\n", { style: { color: "aqua" } }),
+        text("\n"),
+
+        // Members
+        text("👥 Members: ", { style: { color: "yellow" } }),
+        text(`${team.members.length}/${team.maxMembers}\n`, {
+          style: { color: "aqua" },
+        }),
+        ...(team.members.length > 0
+          ? [text(team.members.join(", ") + "\n", { style: { color: "white" } })]
+          : []),
+        text("\n"),
+
+        // Economy
+        text("💰 Team Bank\n", { style: { color: "gold" } }),
+        text("Balance: ", { style: { color: "gray" } }),
+        text(`${team.balance} XPL\n`, { style: { color: "yellow" } }),
+        text("\n"),
+
+        // Creation Info
+        text("📅 Created: ", { style: { color: "gray" } }),
+        text(creationDate + "\n", { style: { color: "white" } }),
+
+        divider(),
+
+        // Actions
+        ...(team.members.includes(sender)
+          ? [
+              button("Team Settings", {
+                variant: "outline",
+                onClick: {
+                  action: "run_command",
+                  value: "/teams settings",
+                },
+              }),
+              text(" "),
+              button("Deposit XPL", {
+                variant: "ghost",
+                onClick: {
+                  action: "suggest_command",
+                  value: "/teams deposit ",
+                },
+              }),
+            ]
+          : team.isPublic
+          ? [
+              button("Join Team", {
+                variant: "success",
+                onClick: {
+                  action: "run_command",
+                  value: `/teams join ${team.id}`,
+                },
+              }),
+            ]
+          : [
+              text("This team requires an invitation to join", {
+                style: { color: "gray" },
+              }),
+            ]),
       ]);
 
-      for (const member of team.members) {
-        await tellraw(member, [
-          { text: "Team color has been updated to ", color: "yellow" },
-          { text: color, color: color, bold: true },
-        ]);
-      }
-
-      log(`Team ${team.name} color set to ${color}`);
+      const messages = await tellraw(
+        sender,
+        teamInfo.render({ platform: "minecraft", player: sender }),
+      );
       return { messages };
     } catch (error) {
-      log(`Error setting team color: ${error.message}`);
-      messages = await tellraw(team.leader, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
@@ -1037,7 +1190,6 @@ export class Teams {
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
     const amount = args.amount;
-    let messages = [];
 
     try {
       if (amount <= 0) {
@@ -1060,7 +1212,7 @@ export class Teams {
         : 0;
 
       if (playerBalance < amount) {
-        throw new Error("Insufficient funds");
+        throw new Error(`Insufficient funds. You have ${playerBalance} XPL`);
       }
 
       const teamResult = await kv.get(["teams", teamId]);
@@ -1068,47 +1220,70 @@ export class Teams {
 
       const result = await kv
         .atomic()
+        .check({
+          key: ["plugins", "economy", "balances", sender],
+          versionstamp: balanceResult.versionstamp,
+        })
         .set(
           ["plugins", "economy", "balances", sender],
-          new Deno.KvU64(BigInt(playerBalance - parseInt(amount))),
+          new Deno.KvU64(BigInt(playerBalance - amount)),
         )
         .set(["teams", teamId], {
           ...team,
-          balance: team.balance + parseInt(amount),
+          balance: team.balance + amount,
         })
         .commit();
 
       if (!result.ok) {
-        throw new Error("Failed to process deposit");
+        throw new Error("Transaction failed");
       }
 
-      messages = await tellraw(sender, [
-        { text: "=== Team Deposit ===\n", color: "gold", bold: true },
-        { text: "Amount: ", color: "gray" },
-        { text: `${amount} XPL\n`, color: "yellow" },
-        { text: "New team balance: ", color: "gray" },
-        { text: `${team.balance + parseInt(amount)} XPL`, color: "gold" },
+      const successMsg = container([
+        text("💰 Team Deposit Success 💰\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text("Amount: ", { style: { color: "gray" } }),
+        text(`${amount} XPL\n`, { style: { color: "yellow" } }),
+        text("New Team Balance: ", { style: { color: "gray" } }),
+        text(`${team.balance + amount} XPL\n`, { style: { color: "gold" } }),
+        text("Your Balance: ", { style: { color: "gray" } }),
+        text(`${playerBalance - amount} XPL`, { style: { color: "green" } }),
+      ]);
+
+      // Notify team members
+      const notifyMsg = container([
+        text(sender, { style: { color: "yellow" } }),
+        text(" deposited ", { style: { color: "gray" } }),
+        text(`${amount} XPL`, { style: { color: "gold" } }),
+        text(" to the team bank", { style: { color: "gray" } }),
       ]);
 
       for (const member of team.members) {
         if (member !== sender) {
-          await tellraw(member, [
-            { text: sender, color: "yellow" },
-            { text: " deposited ", color: "gray" },
-            { text: `${amount} XPL`, color: "gold" },
-            { text: " to team bank", color: "gray" },
-          ]);
+          await tellraw(
+            member,
+            notifyMsg.render({ platform: "minecraft", player: member }),
+          );
         }
       }
 
       log(`${sender} deposited ${amount} XPL to team ${team.name}`);
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages };
     } catch (error) {
       log(`Error in team deposit: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Deposit Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
@@ -1127,7 +1302,6 @@ export class Teams {
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
     const amount = args.amount;
-    let messages = [];
 
     try {
       if (amount <= 0) {
@@ -1147,7 +1321,9 @@ export class Teams {
       }
 
       if (team.balance < amount) {
-        throw new Error("Insufficient team funds");
+        throw new Error(
+          `Insufficient team funds. Team has ${team.balance} XPL`,
+        );
       }
 
       const balanceResult = await kv.get([
@@ -1162,278 +1338,125 @@ export class Teams {
 
       const result = await kv
         .atomic()
+        .check({
+          key: ["plugins", "economy", "balances", sender],
+          versionstamp: balanceResult.versionstamp,
+        })
         .set(
           ["plugins", "economy", "balances", sender],
-          new Deno.KvU64(BigInt(playerBalance + parseInt(amount))),
+          new Deno.KvU64(BigInt(playerBalance + amount)),
         )
         .set(["teams", teamId], {
           ...team,
-          balance: team.balance - parseInt(amount),
+          balance: team.balance - amount,
         })
         .commit();
 
       if (!result.ok) {
-        throw new Error("Failed to process withdrawal");
+        throw new Error("Transaction failed");
       }
 
-      messages = await tellraw(sender, [
-        { text: "=== Team Withdrawal ===\n", color: "gold", bold: true },
-        { text: "Amount: ", color: "gray" },
-        { text: `${amount} XPL\n`, color: "yellow" },
-        { text: "Remaining team balance: ", color: "gray" },
-        { text: `${team.balance - parseInt(amount)} XPL`, color: "gold" },
+      const successMsg = container([
+        text("💰 Team Withdrawal Success 💰\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text("Amount: ", { style: { color: "gray" } }),
+        text(`${amount} XPL\n`, { style: { color: "yellow" } }),
+        text("Remaining Team Balance: ", { style: { color: "gray" } }),
+        text(`${team.balance - amount} XPL\n`, { style: { color: "gold" } }),
+        text("Your New Balance: ", { style: { color: "gray" } }),
+        text(`${playerBalance + amount} XPL`, { style: { color: "green" } }),
+      ]);
+
+      // Notify team members
+      const notifyMsg = container([
+        text(sender, { style: { color: "yellow" } }),
+        text(" withdrew ", { style: { color: "gray" } }),
+        text(`${amount} XPL`, { style: { color: "gold" } }),
+        text(" from the team bank", { style: { color: "gray" } }),
       ]);
 
       for (const member of team.members) {
         if (member !== sender) {
-          await tellraw(member, [
-            { text: sender, color: "yellow" },
-            { text: " withdrew ", color: "gray" },
-            { text: `${amount} XPL`, color: "gold" },
-            { text: " from team bank", color: "gray" },
-          ]);
+          await tellraw(
+            member,
+            notifyMsg.render({ platform: "minecraft", player: member }),
+          );
         }
       }
 
       log(`${sender} withdrew ${amount} XPL from team ${team.name}`);
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages };
     } catch (error) {
       log(`Error in team withdrawal: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Withdrawal Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
       return { messages, error: error.message };
     }
   }
 
-  @Command(["teams", "kick"])
-  @Description("Kick a player from your team")
-  @Permission("player")
-  @Argument([{ name: "player", type: "player", description: "Player to kick" }])
-  async kickPlayer({
+  @Event("player_joined")
+  async handlePlayerJoin({
     params,
     kv,
     api,
     tellraw,
     log,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender, args } = params;
-    const targetPlayer = args.player;
-    let messages = [];
+  }: ScriptContext): Promise<void> {
+    const { playerName } = params;
 
     try {
-      const teamId = await this.getPlayerTeam(kv, sender);
-      if (!teamId) {
-        throw new Error("You are not in a team");
-      }
+      const teamId = await this.getPlayerTeam(kv, playerName);
+      if (teamId) {
+        const teamResult = await kv.get(["teams", teamId]);
+        const team = teamResult.value as TeamData;
 
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
+        if (team && team.members.includes(playerName)) {
+          await this.updatePlayerTeam(api, teamId, playerName);
 
-      if (team.leader !== sender && !team.officers.includes(sender)) {
-        throw new Error("Only team leaders and officers can kick members");
-      }
-
-      if (!team.members.includes(targetPlayer)) {
-        throw new Error("That player is not in your team");
-      }
-
-      if (team.leader === targetPlayer) {
-        throw new Error("Cannot kick the team leader");
-      }
-
-      if (team.officers.includes(targetPlayer) && sender !== team.leader) {
-        throw new Error("Only the team leader can kick officers");
-      }
-
-      const operation: TeamOperationQueue = {
-        type: "remove",
-        teamId,
-        player: targetPlayer,
-        timestamp: new Date().toISOString(),
-      };
-
-      await kv.set(["teams", "operations", targetPlayer], [operation]);
-
-      team.members = team.members.filter((m) => m !== targetPlayer);
-      team.officers = team.officers.filter((o) => o !== targetPlayer);
-      await kv.set(["teams", teamId], team);
-      await kv.delete(["players", targetPlayer, "team"]);
-
-      await this.updatePlayerTeam(api, null, targetPlayer, teamId);
-
-      messages = await tellraw(sender, [
-        { text: "=== Team Kick ===\n", color: "gold", bold: true },
-        { text: "Kicked ", color: "yellow" },
-        { text: targetPlayer, color: "red" },
-        { text: " from the team", color: "yellow" },
-      ]);
-
-      await tellraw(targetPlayer, [
-        { text: "=== Kicked ===\n", color: "red", bold: true },
-        { text: "You have been kicked from ", color: "yellow" },
-        { text: team.name, color: team.color },
-      ]);
-
-      for (const member of team.members) {
-        if (member !== sender && member !== targetPlayer) {
-          await tellraw(member, [
-            { text: targetPlayer, color: "red" },
-            { text: " has been kicked from the team by ", color: "yellow" },
-            { text: sender, color: team.color },
+          const welcomeMsg = container([
+            text("Welcome back to ", { style: { color: "green" } }),
+            text(team.name, {
+              style: { color: team.color, styles: ["bold"] },
+            }),
+            text("!\n", { style: { color: "green" } }),
+            button("View Team Info", {
+              variant: "outline",
+              onClick: {
+                action: "run_command",
+                value: "/teams info",
+              },
+            }),
           ]);
+
+          await tellraw(
+            playerName,
+            welcomeMsg.render({ platform: "minecraft", player: playerName }),
+          );
         }
       }
-
-      log(`${sender} kicked ${targetPlayer} from team ${team.name}`);
-      return { messages };
     } catch (error) {
-      log(`Error in team kick: ${error.message}`);
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
+      log(`Error in player join handler: ${error.message}`);
     }
   }
 
-  @Command(["teams", "info"])
-  @Description("View team information")
-  @Permission("player")
-  async teamInfo({
-    params,
-    kv,
-    tellraw,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender } = params;
-    let messages = [];
-
-    try {
-      const teamId = await this.getPlayerTeam(kv, sender);
-      if (!teamId) {
-        throw new Error("You are not in a team");
-      }
-
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
-
-      messages = await tellraw(sender, [
-        { text: "=== Team Information ===\n", color: "gold", bold: true },
-        { text: "Name: ", color: "gray" },
-        { text: `${team.name}\n`, color: team.color },
-        { text: "Leader: ", color: "gray" },
-        { text: `${team.leader}\n`, color: "white" },
-        { text: "Officers: ", color: "gray" },
-        { text: `${team.officers.join(", ") || "None"}\n`, color: "white" },
-        { text: "Members: ", color: "gray" },
-        { text: `${team.members.length}\n`, color: "white" },
-        { text: "Balance: ", color: "gray" },
-        { text: `${team.balance} XPL\n`, color: "gold" },
-        { text: "Created: ", color: "gray" },
-        {
-          text: new Date(team.createdAt).toLocaleDateString() + "\n",
-          color: "white",
-        },
-        { text: "\n" },
-        {
-          text: "[Team Commands]",
-          color: "green",
-          clickEvent: {
-            action: "run_command",
-            value: "/teams",
-          },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view team commands",
-          },
-        },
-      ]);
-
-      return { messages };
-    } catch (error) {
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  @Command(["teams", "list"])
-  @Description("List all teams")
-  @Permission("player")
-  async listTeams({
-    params,
-    kv,
-    tellraw,
-  }: ScriptContext): Promise<{ messages: any[] }> {
-    const { sender } = params;
-    let messages = [];
-
-    try {
-      const teams = [];
-      const entriesIterator = kv.list({ prefix: ["teams"] });
-      for await (const entry of entriesIterator) {
-        if (
-          entry.value &&
-          typeof entry.value === "object" &&
-          "name" in entry.value
-        ) {
-          teams.push(entry.value as TeamData);
-        }
-      }
-
-      if (teams.length === 0) {
-        messages = await tellraw(sender, [
-          { text: "No teams have been created yet", color: "yellow" },
-        ]);
-        return { messages };
-      }
-
-      const messageComponents = [
-        { text: "=== Teams List ===\n", color: "gold", bold: true },
-      ];
-
-      for (const team of teams) {
-        messageComponents.push(
-          { text: "\n" + team.name, color: team.color, bold: true },
-          { text: "\nLeader: ", color: "gray" },
-          { text: team.leader, color: "white" },
-          { text: "\nMembers: ", color: "gray" },
-          { text: team.members.length.toString(), color: "white" },
-          {
-            text: " [Join]",
-            color: "green",
-            clickEvent: {
-              action: "run_command",
-              value: `/teams join ${team.id}`,
-            },
-            hoverEvent: {
-              action: "show_text",
-              value: "Click to join team",
-            },
-          },
-        );
-      }
-
-      messages = await tellraw(sender, messageComponents);
-      return { messages };
-    } catch (error) {
-      messages = await tellraw(sender, [
-        { text: "Error: ", color: "red" },
-        { text: error.message, color: "white" },
-      ]);
-      return { messages, error: error.message };
-    }
-  }
-
-  // Socket endpoints remain unchanged as they don't use tellraw
-  @Socket("team_data")
+  @Socket("get_team_data")
   async getTeamData({ params, kv }: ScriptContext): Promise<any> {
     try {
       const { playerName } = params;
       const teamId = await this.getPlayerTeam(kv, playerName);
+
       if (!teamId) {
         return { success: true, data: null };
       }
@@ -1447,6 +1470,7 @@ export class Teams {
           ...team,
           isLeader: team.leader === playerName,
           isOfficer: team.officers.includes(playerName),
+          isMember: team.members.includes(playerName),
         },
       };
     } catch (error) {
@@ -1460,10 +1484,26 @@ export class Teams {
   @Socket("list_teams")
   async getAllTeams({ kv }: ScriptContext): Promise<any> {
     try {
-      const teamsResult = await kv.get(["teams"]);
+      const teams = [];
+      const entriesIterator = kv.list({ prefix: ["teams"] });
+      for await (const entry of entriesIterator) {
+        if (entry.key[1] !== "invites" && entry.key[1] !== "operations") {
+          teams.push(entry.value);
+        }
+      }
+
       return {
         success: true,
-        data: teamsResult.value || [],
+        data: teams.map((team: TeamData) => ({
+          id: team.id,
+          name: team.name,
+          description: team.description,
+          memberCount: team.members.length,
+          maxMembers: team.maxMembers,
+          isPublic: team.isPublic,
+          color: team.color,
+          leader: team.leader,
+        })),
       };
     } catch (error) {
       return {
@@ -1473,27 +1513,18 @@ export class Teams {
     }
   }
 
-  @Socket("team_members")
-  async getTeamMembers({ params, kv }: ScriptContext): Promise<any> {
+  @Socket("get_team_invites")
+  async getTeamInvites({ params, kv }: ScriptContext): Promise<any> {
     try {
       const { teamId } = params;
-      const teamResult = await kv.get(["teams", teamId]);
-      const team = teamResult.value as TeamData;
+      await this.cleanExpiredInvites(kv, teamId);
 
-      if (!team) {
-        return {
-          success: false,
-          error: "Team not found",
-        };
-      }
+      const invitesResult = await kv.get(["teams", "invites", teamId]);
+      const invites = invitesResult.value || [];
 
       return {
         success: true,
-        data: {
-          members: team.members,
-          officers: team.officers,
-          leader: team.leader,
-        },
+        data: invites,
       };
     } catch (error) {
       return {

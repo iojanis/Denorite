@@ -30,6 +30,13 @@ interface Zone {
   createdBy: string;
 }
 
+interface MapSymbol {
+  char: string;
+  color: string;
+  name?: string;
+  type?: string;
+}
+
 @Module({
   name: "Zones",
   version: "1.0.1",
@@ -105,7 +112,38 @@ export class Zones {
     };
   }
 
-  private async updateZoneMarkers(zone: Zone, bluemap: any): Promise<void> {
+  private minecraftColorToRGB(color: string): {
+    r: number;
+    g: number;
+    b: number;
+  } {
+    const colorMap: Record<string, { r: number; g: number; b: number }> = {
+      black: { r: 0, g: 0, b: 0 },
+      dark_blue: { r: 0, g: 0, b: 170 },
+      dark_green: { r: 0, g: 170, b: 0 },
+      dark_aqua: { r: 0, g: 170, b: 170 },
+      dark_red: { r: 170, g: 0, b: 0 },
+      dark_purple: { r: 170, g: 0, b: 170 },
+      gold: { r: 255, g: 170, b: 0 },
+      gray: { r: 170, g: 170, b: 170 },
+      dark_gray: { r: 85, g: 85, b: 85 },
+      blue: { r: 85, g: 85, b: 255 },
+      green: { r: 85, g: 255, b: 85 },
+      aqua: { r: 85, g: 255, b: 255 },
+      red: { r: 255, g: 85, b: 85 },
+      light_purple: { r: 255, g: 85, b: 255 },
+      yellow: { r: 255, g: 255, b: 85 },
+      white: { r: 255, g: 255, b: 255 },
+    };
+
+    return colorMap[color] || { r: 0, g: 255, b: 0 }; // Default to green if color not found
+  }
+
+  private async updateZoneMarkers(
+    zone: Zone,
+    teamColor: string,
+    bluemap: any,
+  ): Promise<void> {
     const markerId = `zone_${zone.id}`;
     const points = zone.positions.map((p) => ({
       x: p.x,
@@ -113,14 +151,17 @@ export class Zones {
       z: p.z,
     }));
 
-    // Add zone boundary marker
+    const rgbColor = this.minecraftColorToRGB(teamColor);
+
+    // Add zone boundary marker with team color
     await bluemap.addMarker("zones", markerId, "shape", {
       label: zone.name,
       shape: points,
       shapeY: zone.center.y,
       lineWidth: 3,
-      lineColor: { r: 0, g: 255, b: 0, a: 255 },
-      fillColor: { r: 0, g: 255, b: 0, a: 64 },
+      lineColor: { ...rgbColor, a: 255 },
+      fillColor: { ...rgbColor, a: 64 },
+      maxDistance: 10000000,
     });
 
     // Add teleport point marker
@@ -366,6 +407,17 @@ export class Zones {
           style: { color: "gold", styles: ["bold"] },
         }),
 
+        button("/zones map [zoom]", {
+          variant: "ghost",
+          onClick: {
+            action: "suggest_command",
+            value: "/zones map ",
+          },
+        }),
+        text(" - Show ASCII map of zones around you\n", {
+          style: { color: "gray" },
+        }),
+
         button("/zones create <name> <description>", {
           variant: "ghost",
           onClick: {
@@ -385,6 +437,28 @@ export class Zones {
           },
         }),
         text(" - List all zones owned by your team\n", {
+          style: { color: "gray" },
+        }),
+
+        button("/zones market", {
+          variant: "ghost",
+          onClick: {
+            action: "run_command",
+            value: "/zones market",
+          },
+        }),
+        text(" - Browse zones available for purchase\n", {
+          style: { color: "gray" },
+        }),
+
+        button("/zones hubs", {
+          variant: "ghost",
+          onClick: {
+            action: "run_command",
+            value: "/zones hubs",
+          },
+        }),
+        text(" - List all available teleport hubs\n", {
           style: { color: "gray" },
         }),
 
@@ -471,7 +545,94 @@ export class Zones {
     let messages: any[] = [];
 
     try {
-      // ... (keep existing zone creation logic) ...
+      // Check if player is a team leader
+      const teamResult = await kv.get(["players", sender, "team"]);
+      const teamId = teamResult.value;
+      if (!teamId) {
+        throw new Error("You must be in a team to create a zone");
+      }
+
+      const teamDataResult = await kv.get(["teams", teamId]);
+      const teamData = teamDataResult.value;
+      if (!teamData || teamData.leader !== sender) {
+        throw new Error("Only team leaders can create zones");
+      }
+
+      // Check player balance
+      const balanceResult = await kv.get([
+        "plugins",
+        "economy",
+        "balances",
+        sender,
+      ]);
+      const balance = balanceResult.value ? Number(balanceResult.value) : 0;
+      if (balance < this.ZONE_COST) {
+        throw new Error(`You need ${this.ZONE_COST} XPL to create a zone`);
+      }
+
+      // Get player position
+      const position = await api.getPlayerPosition(sender);
+      const zoneId = this.createSlug(name);
+
+      // Create new zone object
+      const newZone: Zone = {
+        id: zoneId,
+        name,
+        teamId,
+        description,
+        positions: this.createPositions(position.x, position.y, position.z),
+        center: position,
+        teleportEnabled: false,
+        forSale: false,
+        price: 0,
+        createdAt: new Date().toISOString(),
+        createdBy: sender,
+      };
+
+      // Check for overlapping zones
+      const zones = [];
+      const entriesIterator = kv.list({ prefix: ["zones"] });
+      for await (const entry of entriesIterator) {
+        zones.push(entry.value);
+      }
+
+      const overlapping = zones.some((zone) =>
+        this.isOverlapping(newZone, zone),
+      );
+      if (overlapping) {
+        throw new Error(
+          "This zone overlaps with an existing zone or is too close to another zone",
+        );
+      }
+
+      // Create zone and deduct XPL atomically
+      const result = await kv
+        .atomic()
+        .check({ key: ["zones", zoneId], versionstamp: null })
+        .check({
+          key: ["plugins", "economy", "balances", sender],
+          versionstamp: balanceResult.versionstamp,
+        })
+        .set(["zones", zoneId], newZone)
+        .set(
+          ["plugins", "economy", "balances", sender],
+          new Deno.KvU64(BigInt(balance - this.ZONE_COST)),
+        )
+        .commit();
+
+      if (!result.ok) {
+        throw new Error("Failed to create zone - transaction failed");
+      }
+
+      // Set up command blocks for zone protection
+      const coords = this.createSquareCoordinates(position);
+      await this.setupZoneProtection(rcon, coords, teamId);
+
+      // Add zone markers to BlueMap
+      await this.updateZoneMarkers(newZone, teamData.color, bluemap);
+
+      // Create info display
+      await this.createZoneDisplay(rcon, coords, name, description);
 
       // Update notification message using tellraw-ui
       const notificationContent = container([
@@ -561,20 +722,69 @@ export class Zones {
           style: { color: "gold", styles: ["bold"] },
         }),
         ...teamZones.flatMap((zone) => [
-          text(`\n${zone.name}\n`, {
+          // Zone name as clickable button
+          button(zone.name, {
+            variant: "ghost",
             style: { color: "green", styles: ["bold"] },
+            onClick: {
+              action: "run_command",
+              value: `/zones info ${zone.id}`,
+            },
           }),
-          text(`Description: ${zone.description}\n`, {
-            style: { color: "white" },
-          }),
+          text("\n"),
+
+          // Zone status indicators
+          text("Status: ", { style: { color: "gray" } }),
+          ...(zone.teleportEnabled
+            ? [text("🌟 Teleport Hub ", { style: { color: "aqua" } })]
+            : []),
+          ...(zone.forSale
+            ? [
+                text("💰 For Sale ", { style: { color: "yellow" } }),
+                text(`(${zone.price} XPL)`, { style: { color: "gold" } }),
+              ]
+            : []),
+          ...(!zone.teleportEnabled && !zone.forSale
+            ? [text("🔒 Private", { style: { color: "gray" } })]
+            : []),
+          text("\n"),
+
+          // Zone description
+          text("Description: ", { style: { color: "gray" } }),
+          text(`${zone.description}\n`, { style: { color: "white" } }),
+
+          // Location info
+          text("Location: ", { style: { color: "gray" } }),
+          text(
+            `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${Math.floor(zone.center.z)}`,
+            {
+              style: { color: "aqua" },
+              onClick: {
+                action: "copy_to_clipboard",
+                value: `${Math.floor(zone.center.x)} ${Math.floor(zone.center.y)} ${Math.floor(zone.center.z)}`,
+              },
+            },
+          ),
+          text("\n"),
+
+          // Quick actions
           button("Teleport", {
-            variant: "outline",
+            variant: "success",
             onClick: {
               action: "run_command",
               value: `/zones tp ${zone.id}`,
             },
           }),
+          text(" "),
+          button("Info", {
+            variant: "outline",
+            onClick: {
+              action: "run_command",
+              value: `/zones info ${zone.id}`,
+            },
+          }),
           text("\n"),
+          divider(),
         ]),
       ]);
 
@@ -619,13 +829,64 @@ export class Zones {
     let messages: any[] = [];
 
     try {
-      // ... (keep existing zone lookup logic) ...
+      let currentZone: Zone | null = null;
+
+      if (args.zoneId) {
+        const zoneResult = await kv.get(["zones", args.zoneId]);
+        currentZone = zoneResult.value as Zone;
+        if (!currentZone) {
+          throw new Error("Zone not found");
+        }
+      } else {
+        const position = await api.getPlayerPosition(sender);
+        const entriesIterator = kv.list({ prefix: ["zones"] });
+        for await (const entry of entriesIterator) {
+          const zone = entry.value as Zone;
+          if (this.isCoordinateInZone(position, zone)) {
+            currentZone = zone;
+            break;
+          }
+        }
+
+        if (!currentZone) {
+          throw new Error("You are not in any zone");
+        }
+      }
+
+      const teamResult = await kv.get(["teams", currentZone.teamId]);
+      const team = teamResult.value;
+      const isTeamLeader = team.leader === sender;
+
+      // Calculate zone dimensions
+      const size = {
+        width: Math.abs(
+          currentZone.positions[0].x - currentZone.positions[1].x,
+        ),
+        length: Math.abs(
+          currentZone.positions[0].z - currentZone.positions[2].z,
+        ),
+        height: this.WORLD_MAX_Y - this.WORLD_MIN_Y,
+      };
+
+      // Format creation date
+      const creationDate = new Date(currentZone.createdAt).toLocaleDateString(
+        "en-US",
+        {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+      );
 
       const infoDisplay = container([
+        // Title
         text("⚡ Zone Information ⚡\n", {
           style: { color: "gold", styles: ["bold"] },
         }),
 
+        // Basic Info
         text("Name: ", { style: { color: "gray" } }),
         text(`${currentZone.name}\n`, {
           style: { color: team.color, styles: ["bold"] },
@@ -640,15 +901,67 @@ export class Zones {
           style: { color: "gray" },
         }),
 
-        text("Owner: ", { style: { color: "gray" } }),
-        text(`${ownerName}\n`, { style: { color: "green" } }),
+        // Status Section
+        text("\n📊 Status\n", { style: { color: "gold" } }),
+        text("Teleport Hub: ", { style: { color: "gray" } }),
+        text(
+          `${currentZone.teleportEnabled ? "✅ Enabled" : "❌ Disabled"}\n`,
+          {
+            style: { color: currentZone.teleportEnabled ? "green" : "red" },
+          },
+        ),
+        text("For Sale: ", { style: { color: "gray" } }),
+        text(
+          `${currentZone.forSale ? `✅ Listed for ${currentZone.price} XPL` : "❌ Not for sale"}\n`,
+          {
+            style: { color: currentZone.forSale ? "green" : "red" },
+          },
+        ),
 
-        text("Created: ", { style: { color: "gray" } }),
-        text(`${formattedDate}\n`, { style: { color: "yellow" } }),
+        // Dimensions
+        text("\n📐 Dimensions\n", { style: { color: "gold" } }),
+        text(`Width: ${size.width} blocks\n`, { style: { color: "aqua" } }),
+        text(`Length: ${size.length} blocks\n`, { style: { color: "aqua" } }),
+        text(`Height: ${size.height} blocks\n`, { style: { color: "aqua" } }),
 
-        divider(),
-        text("Actions:\n", { style: { color: "gold" } }),
+        // Location
+        text("\n📍 Location\n", { style: { color: "gold" } }),
+        text("Center: ", { style: { color: "gray" } }),
+        text(
+          `${Math.floor(currentZone.center.x)}, ${Math.floor(currentZone.center.y)}, ${Math.floor(currentZone.center.z)}`,
+          {
+            style: { color: "aqua" },
+            onClick: {
+              action: "copy_to_clipboard",
+              value: `${Math.floor(currentZone.center.x)} ${Math.floor(currentZone.center.y)} ${Math.floor(currentZone.center.z)}`,
+            },
+          },
+        ),
+        text(" (Click to copy)\n"),
 
+        // Creation Info
+        text("\n📅 Created\n", { style: { color: "gold" } }),
+        text(`${creationDate} by `, { style: { color: "yellow" } }),
+        text(`${currentZone.createdBy}\n`, { style: { color: "green" } }),
+
+        // Teleport Hub Info
+        ...(currentZone.teleportEnabled
+          ? [
+              text("\n🌟 Teleport Hub Info\n", { style: { color: "gold" } }),
+              text(
+                "This zone serves as a public teleport hub for team members. ",
+                { style: { color: "aqua" } },
+              ),
+              text("Members can use ", { style: { color: "gray" } }),
+              text("/zones tp ", { style: { color: "yellow" } }),
+              text("to quickly travel here.\n", { style: { color: "gray" } }),
+            ]
+          : []),
+
+        // Actions Section
+        text("\n⚙️ Actions:\n", { style: { color: "gold" } }),
+
+        // Basic actions for all team members
         button("Teleport", {
           variant: "success",
           onClick: {
@@ -658,9 +971,33 @@ export class Zones {
         }),
         text(" "),
 
-        ...(team.leader === sender
+        // Leader-only actions
+        ...(isTeamLeader
           ? [
-              button("Modify", {
+              button(
+                currentZone.teleportEnabled
+                  ? "Disable Teleport Hub"
+                  : "Enable Teleport Hub",
+                {
+                  variant: currentZone.teleportEnabled
+                    ? "destructive"
+                    : "success",
+                  onClick: {
+                    action: "run_command",
+                    value: `/zones modify ${currentZone.id} teleport ${!currentZone.teleportEnabled}`,
+                  },
+                },
+              ),
+              text(" "),
+              button("Set Price", {
+                variant: "outline",
+                onClick: {
+                  action: "suggest_command",
+                  value: `/zones modify ${currentZone.id} price `,
+                },
+              }),
+              text(" "),
+              button("Edit Description", {
                 variant: "outline",
                 onClick: {
                   action: "suggest_command",
@@ -917,6 +1254,10 @@ export class Zones {
           zone.price = price;
           zone.forSale = price > 0;
           break;
+        case "teleport":
+          const enabled = value.toLowerCase() === "true";
+          zone.teleportEnabled = enabled;
+          break;
         default:
           throw new Error("Invalid setting. Use description or price");
       }
@@ -965,7 +1306,9 @@ export class Zones {
   }
 
   @Command(["zones", "tp"])
-  @Description("Teleport to a zone center")
+  @Description(
+    "Teleport to a zone center (team members can tp to any team zone, others can use hubs for a fee)",
+  )
   @Permission("player")
   @Argument([
     { name: "zoneId", type: "string", description: "Zone ID to teleport to" },
@@ -979,6 +1322,8 @@ export class Zones {
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
     const { zoneId } = args;
+    const BASE_TP_COST = 5; // Base cost in XPL
+    const DISTANCE_MULTIPLIER = 0.01; // Cost per block traveled
 
     try {
       const zoneResult = await kv.get(["zones", zoneId]);
@@ -988,14 +1333,87 @@ export class Zones {
         throw new Error("Zone not found");
       }
 
-      const teamResult = await kv.get(["players", sender, "team"]);
-      if (teamResult.value !== zone.teamId) {
-        throw new Error("You can only teleport to zones owned by your team");
+      // Get player's team
+      const playerTeamResult = await kv.get(["players", sender, "team"]);
+      const playerTeamId = playerTeamResult.value;
+      const isSameTeam = playerTeamId === zone.teamId;
+
+      // Non-team members can only teleport to hubs
+      if (!isSameTeam && !zone.teleportEnabled) {
+        throw new Error(
+          "This zone is not a teleport hub. Only team members can teleport here.",
+        );
       }
 
+      // Get current player position
+      const playerPos = await api.getPlayerPosition(sender);
+
+      // Calculate distance
+      const distance = Math.sqrt(
+        Math.pow(playerPos.x - zone.center.x, 2) +
+          Math.pow(playerPos.y - zone.center.y, 2) +
+          Math.pow(playerPos.z - zone.center.z, 2),
+      );
+
+      // Calculate teleport cost - free for team members
+      const tpCost = isSameTeam
+        ? 0
+        : Math.ceil(BASE_TP_COST + distance * DISTANCE_MULTIPLIER);
+
+      // If there's a cost, handle the transaction
+      if (tpCost > 0) {
+        // Get player balance
+        const balanceResult = await kv.get([
+          "plugins",
+          "economy",
+          "balances",
+          sender,
+        ]);
+        const playerBalance = balanceResult.value
+          ? Number(balanceResult.value)
+          : 0;
+
+        if (playerBalance < tpCost) {
+          throw new Error(
+            `Insufficient funds. Teleport costs ${tpCost} XPL (${distance.toFixed(0)} blocks)`,
+          );
+        }
+
+        // Get destination team data for balance update
+        const destTeamResult = await kv.get(["teams", zone.teamId]);
+        const destTeam = destTeamResult.value;
+
+        // Perform transaction atomically
+        const result = await kv
+          .atomic()
+          .check({
+            key: ["plugins", "economy", "balances", sender],
+            versionstamp: balanceResult.versionstamp,
+          })
+          .check({
+            key: ["teams", zone.teamId],
+            versionstamp: destTeamResult.versionstamp,
+          })
+          .set(
+            ["plugins", "economy", "balances", sender],
+            new Deno.KvU64(BigInt(playerBalance - tpCost)),
+          )
+          .set(["teams", zone.teamId], {
+            ...destTeam,
+            balance: (destTeam.balance || 0) + tpCost,
+          })
+          .commit();
+
+        if (!result.ok) {
+          throw new Error("Transaction failed. Please try again.");
+        }
+      }
+
+      // Perform teleport
       const { x, y, z } = zone.center;
       await api.teleport(sender, x.toString(), y.toString(), z.toString());
 
+      // Prepare success message with appropriate context
       const successMsg = container([
         text("Teleported to ", { style: { color: "green" } }),
         text(zone.name, { style: { color: "yellow", styles: ["bold"] } }),
@@ -1007,9 +1425,47 @@ export class Zones {
             value: `${Math.floor(x)} ${Math.floor(y)} ${Math.floor(z)}`,
           },
         }),
+        ...(isSameTeam
+          ? [
+              text("\nFree teleport", { style: { color: "green" } }),
+              text(" (team zone)", { style: { color: "gray" } }),
+            ]
+          : [
+              text("\nTeleport Hub Fee: ", { style: { color: "gray" } }),
+              text(`${tpCost} XPL`, { style: { color: "gold" } }),
+              text(` (${distance.toFixed(0)} blocks)`, {
+                style: { color: "gray" },
+              }),
+            ]),
       ]);
 
-      log(`Player ${sender} teleported to zone ${zone.name}`);
+      // Notify team about earned XPL if applicable
+      if (tpCost > 0) {
+        const destTeamResult = await kv.get(["teams", zone.teamId]);
+        const destTeam = destTeamResult.value;
+
+        const teamNotification = container([
+          text("💰 Teleport Hub Fee Received\n", { style: { color: "gold" } }),
+          text(`${sender}`, { style: { color: "green" } }),
+          text(" paid ", { style: { color: "gray" } }),
+          text(`${tpCost} XPL`, { style: { color: "yellow" } }),
+          text(" to teleport to ", { style: { color: "gray" } }),
+          text(zone.name, { style: { color: "aqua" } }),
+        ]);
+
+        // Notify team leader
+        await tellraw(
+          destTeam.leader,
+          teamNotification.render({
+            platform: "minecraft",
+            player: destTeam.leader,
+          }),
+        );
+      }
+
+      log(
+        `Player ${sender} teleported to zone ${zone.name} (Cost: ${tpCost} XPL)`,
+      );
       const messages = await tellraw(
         sender,
         successMsg.render({ platform: "minecraft", player: sender }),
@@ -1030,9 +1486,609 @@ export class Zones {
     }
   }
 
-  @Event("denorite_connected")
-  async initializeMarkerSets({ bluemap, log }: ScriptContext): Promise<void> {
+  @Command(["zones", "market"])
+  @Description("List all zones that are for sale")
+  @Permission("player")
+  async listZonesForSale({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages: any[] = [];
+
     try {
+      // Get all zones
+      const zones = [];
+      const entriesIterator = kv.list({ prefix: ["zones"] });
+      for await (const entry of entriesIterator) {
+        zones.push(entry.value);
+      }
+
+      // Filter zones that are for sale
+      const zonesForSale = zones.filter((zone) => zone.forSale);
+
+      if (zonesForSale.length === 0) {
+        const noZonesMsg = container([
+          text("📢 Zone Market\n", {
+            style: { color: "gold", styles: ["bold"] },
+          }),
+          text("No zones are currently for sale", {
+            style: { color: "yellow" },
+          }),
+        ]);
+        messages = await tellraw(
+          sender,
+          noZonesMsg.render({ platform: "minecraft", player: sender }),
+        );
+        return { messages };
+      }
+
+      // Get all teams for team colors and names
+      const teams = new Map();
+      const teamsIterator = kv.list({ prefix: ["teams"] });
+      for await (const entry of teamsIterator) {
+        const team = entry.value;
+        teams.set(team.id, team);
+      }
+
+      // Sort zones by price
+      zonesForSale.sort((a, b) => a.price - b.price);
+
+      const marketList = container([
+        text("📢 Zone Market\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text(
+          `${zonesForSale.length} zone${zonesForSale.length !== 1 ? "s" : ""} available for purchase\n`,
+          {
+            style: { color: "yellow" },
+          },
+        ),
+        divider(),
+        ...zonesForSale.flatMap((zone) => {
+          const team = teams.get(zone.teamId);
+          const teamColor = team?.color || "white";
+
+          return [
+            // Zone name as clickable button
+            button(zone.name, {
+              variant: "ghost",
+              style: { color: teamColor, styles: ["bold"] },
+              onClick: {
+                action: "run_command",
+                value: `/zones info ${zone.id}`,
+              },
+            }),
+            text("\n"),
+
+            // Price and team info
+            text("Price: ", { style: { color: "gray" } }),
+            text(`${zone.price} XPL\n`, { style: { color: "gold" } }),
+            text("Selling Team: ", { style: { color: "gray" } }),
+            text(`${team?.name || "Unknown"}\n`, {
+              style: { color: teamColor },
+            }),
+
+            // Zone features
+            text("Features: ", { style: { color: "gray" } }),
+            ...(zone.teleportEnabled
+              ? [text("🌟 Teleport Hub ", { style: { color: "aqua" } })]
+              : []),
+            text("\n"),
+
+            // Location
+            text("Location: ", { style: { color: "gray" } }),
+            text(
+              `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${Math.floor(zone.center.z)}`,
+              {
+                style: { color: "aqua" },
+                onClick: {
+                  action: "copy_to_clipboard",
+                  value: `${Math.floor(zone.center.x)} ${Math.floor(zone.center.y)} ${Math.floor(zone.center.z)}`,
+                },
+              },
+            ),
+            text(" (Click to copy)\n"),
+
+            // Description
+            text("Description: ", { style: { color: "gray" } }),
+            text(`${zone.description}\n`, { style: { color: "white" } }),
+
+            // Quick actions
+            button("View Details", {
+              variant: "outline",
+              onClick: {
+                action: "run_command",
+                value: `/zones info ${zone.id}`,
+              },
+            }),
+            text(" "),
+            ...(zone.teleportEnabled
+              ? [
+                  button("Teleport Preview", {
+                    variant: "success",
+                    onClick: {
+                      action: "run_command",
+                      value: `/zones tp ${zone.id}`,
+                    },
+                  }),
+                  text(" "),
+                ]
+              : []),
+            button("Buy Zone", {
+              variant: "ghost",
+              style: { color: "gold" },
+              onClick: {
+                action: "suggest_command",
+                value: `/zones buy ${zone.id}`,
+              },
+            }),
+            divider(),
+          ];
+        }),
+        text("\n💡 ", { style: { color: "yellow" } }),
+        text("Tip: Click zone names for more information or use ", {
+          style: { color: "gray" },
+        }),
+        text("/zones buy <id>", { style: { color: "yellow" } }),
+        text(" to purchase a zone", { style: { color: "gray" } }),
+      ]);
+
+      messages = await tellraw(
+        sender,
+        marketList.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages, error: error.message };
+    }
+  }
+
+  @Command(["zones", "hubs"])
+  @Description("List all available teleport hubs")
+  @Permission("player")
+  async listTeleportHubs({
+    params,
+    kv,
+    tellraw,
+    api,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages: any[] = [];
+
+    try {
+      // Get player's position for distance calculation
+      const playerPos = await api.getPlayerPosition(sender);
+
+      // Get player's team
+      const playerTeamResult = await kv.get(["players", sender, "team"]);
+      const playerTeamId = playerTeamResult.value;
+
+      // Get all zones
+      const zones = [];
+      const entriesIterator = kv.list({ prefix: ["zones"] });
+      for await (const entry of entriesIterator) {
+        zones.push(entry.value);
+      }
+
+      // Filter for teleport hubs and add distance
+      const hubs = zones
+        .filter((zone) => zone.teleportEnabled)
+        .map((zone) => ({
+          ...zone,
+          distance: Math.sqrt(
+            Math.pow(playerPos.x - zone.center.x, 2) +
+              Math.pow(playerPos.y - zone.center.y, 2) +
+              Math.pow(playerPos.z - zone.center.z, 2),
+          ),
+          cost:
+            playerTeamId === zone.teamId
+              ? 0
+              : Math.ceil(
+                  5 +
+                    Math.sqrt(
+                      Math.pow(playerPos.x - zone.center.x, 2) +
+                        Math.pow(playerPos.y - zone.center.y, 2) +
+                        Math.pow(playerPos.z - zone.center.z, 2),
+                    ) *
+                      0.01,
+                ),
+        }))
+        .sort((a, b) => a.distance - b.distance); // Sort by distance
+
+      if (hubs.length === 0) {
+        const noHubsMsg = container([
+          text("🌟 Teleport Hubs\n", {
+            style: { color: "gold", styles: ["bold"] },
+          }),
+          text("No teleport hubs are currently available", {
+            style: { color: "yellow" },
+          }),
+        ]);
+        messages = await tellraw(
+          sender,
+          noHubsMsg.render({ platform: "minecraft", player: sender }),
+        );
+        return { messages };
+      }
+
+      // Get all teams for team colors and names
+      const teams = new Map();
+      const teamsIterator = kv.list({ prefix: ["teams"] });
+      for await (const entry of teamsIterator) {
+        const team = entry.value;
+        teams.set(team.id, team);
+      }
+
+      const hubsList = container([
+        text("🌟 Teleport Hubs\n", {
+          style: { color: "gold", styles: ["bold"] },
+        }),
+        text(`${hubs.length} hub${hubs.length !== 1 ? "s" : ""} available\n`, {
+          style: { color: "yellow" },
+        }),
+        text("Sorted by distance from your location\n", {
+          style: { color: "gray" },
+        }),
+        divider(),
+        ...hubs.flatMap((hub) => {
+          const team = teams.get(hub.teamId);
+          const teamColor = team?.color || "white";
+          const isOwnTeam = playerTeamId === hub.teamId;
+
+          return [
+            // Hub name and distance
+            button(hub.name, {
+              variant: "ghost",
+              style: { color: teamColor, styles: ["bold"] },
+              onClick: {
+                action: "run_command",
+                value: `/zones info ${hub.id}`,
+              },
+            }),
+            text(" "),
+            text(`(${Math.floor(hub.distance)} blocks)\n`, {
+              style: { color: "gray" },
+            }),
+
+            // Team info
+            text("Team: ", { style: { color: "gray" } }),
+            text(`${team?.name || "Unknown"}\n`, {
+              style: { color: teamColor },
+            }),
+
+            // Cost info
+            text("Teleport Fee: ", { style: { color: "gray" } }),
+            ...(isOwnTeam
+              ? [text("Free (Team Member)\n", { style: { color: "green" } })]
+              : [text(`${hub.cost} XPL\n`, { style: { color: "gold" } })]),
+
+            // Location with copy
+            text("Location: ", { style: { color: "gray" } }),
+            text(
+              `${Math.floor(hub.center.x)}, ${Math.floor(hub.center.y)}, ${Math.floor(hub.center.z)}`,
+              {
+                style: { color: "aqua" },
+                onClick: {
+                  action: "copy_to_clipboard",
+                  value: `${Math.floor(hub.center.x)} ${Math.floor(hub.center.y)} ${Math.floor(hub.center.z)}`,
+                },
+              },
+            ),
+            text(" (Click to copy)\n", { style: { color: "gray" } }),
+
+            // Description
+            text("Description: ", { style: { color: "gray" } }),
+            text(`${hub.description}\n`, { style: { color: "white" } }),
+
+            // For Sale status if applicable
+            ...(hub.forSale
+              ? [
+                  text("📢 ", { style: { color: "yellow" } }),
+                  text("This hub is also ", { style: { color: "gray" } }),
+                  text("FOR SALE", { style: { color: "gold" } }),
+                  text(` (${hub.price} XPL)\n`, { style: { color: "yellow" } }),
+                ]
+              : []),
+
+            // Quick actions
+            button("Teleport", {
+              variant: "success",
+              onClick: {
+                action: "run_command",
+                value: `/zones tp ${hub.id}`,
+              },
+            }),
+            text(" "),
+            button("Info", {
+              variant: "outline",
+              onClick: {
+                action: "run_command",
+                value: `/zones info ${hub.id}`,
+              },
+            }),
+            divider(),
+          ];
+        }),
+        text("\n💡 ", { style: { color: "yellow" } }),
+        text("Tip: Teleport fees are based on distance traveled.\n", {
+          style: { color: "gray" },
+        }),
+        text("Team members can teleport to their own hubs for free!", {
+          style: { color: "green" },
+        }),
+      ]);
+
+      messages = await tellraw(
+        sender,
+        hubsList.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages, error: error.message };
+    }
+  }
+
+  @Command(["zones", "map"])
+  @Description("Show an ASCII map of zones around you")
+  @Permission("player")
+  @Argument([
+    {
+      name: "zoom",
+      type: "number",
+      description: "Zoom level (1-3)",
+      required: false,
+      default: 2,
+    },
+  ])
+  async showZoneMap({
+    params,
+    kv,
+    tellraw,
+    api,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender, args } = params;
+    let messages: any[] = [];
+
+    try {
+      const playerPos = await api.getPlayerPosition(sender);
+      const playerTeamResult = await kv.get(["players", sender, "team"]);
+      const playerTeamId = playerTeamResult.value;
+
+      const zoomLevels = {
+        1: 16, // Close zoom: 16x16 blocks per character
+        2: 32, // Medium zoom: 32x32 blocks per character
+        3: 64, // Far zoom: 64x64 blocks per character
+      };
+
+      const zoom = Math.min(Math.max(args.zoom || 2, 1), 3);
+      const blocksPerChar = zoomLevels[zoom];
+
+      const mapWidth = 16;
+      const mapHeight = 8;
+      const halfWidth = Math.floor(mapWidth / 2);
+      const halfHeight = Math.floor(mapHeight / 2);
+
+      const bounds = {
+        minX: playerPos.x - halfWidth * blocksPerChar,
+        maxX: playerPos.x + halfWidth * blocksPerChar,
+        minZ: playerPos.z - halfHeight * blocksPerChar,
+        maxZ: playerPos.z + halfHeight * blocksPerChar,
+      };
+
+      // Get zones and teams
+      const zones = [];
+      const entriesIterator = kv.list({ prefix: ["zones"] });
+      for await (const entry of entriesIterator) {
+        zones.push(entry.value);
+      }
+
+      const teams = new Map();
+      const teamsIterator = kv.list({ prefix: ["teams"] });
+      for await (const entry of entriesIterator) {
+        const team = entry.value;
+        teams.set(team.id, team);
+      }
+
+      // Initialize grid with spaces
+      const grid: MapSymbol[][] = Array(mapHeight)
+        .fill(null)
+        .map(() =>
+          Array(mapWidth)
+            .fill(null)
+            .map(() => ({ char: "☰", color: "gray" })),
+        );
+
+      const worldToGrid = (x: number, z: number): [number, number] | null => {
+        const gridX = Math.floor((x - bounds.minX) / blocksPerChar);
+        const gridZ = Math.floor((z - bounds.minZ) / blocksPerChar);
+
+        if (gridX >= 0 && gridX < mapWidth && gridZ >= 0 && gridZ < mapHeight) {
+          return [gridX, gridZ];
+        }
+        return null;
+      };
+
+      // Place zone areas on grid
+      zones.forEach((zone) => {
+        const team = teams.get(zone.teamId);
+        const teamColor = team?.color || "white";
+
+        // Calculate zone boundaries in grid coordinates
+        for (
+          let x = zone.positions[0].x;
+          x <= zone.positions[2].x;
+          x += blocksPerChar
+        ) {
+          for (
+            let z = zone.positions[0].z;
+            z <= zone.positions[2].z;
+            z += blocksPerChar
+          ) {
+            const gridPos = worldToGrid(x, z);
+            if (gridPos) {
+              const [gx, gz] = gridPos;
+              // Fill area with team color
+              grid[gz][gx] = {
+                char: "☵", // Using # for territory
+                color: teamColor,
+                name: zone.name,
+                type: "territory",
+              };
+            }
+          }
+        }
+
+        // Place zone center marker on top
+        const centerPos = worldToGrid(zone.center.x, zone.center.z);
+        if (centerPos) {
+          const [cx, cz] = centerPos;
+          grid[cz][cx] = {
+            char: zone.teleportEnabled ? "☷" : "☰", // H for hub, Z for zone center
+            color: teamColor,
+            name: zone.name,
+            type: zone.teleportEnabled ? "hub" : "zone center",
+          };
+        }
+      });
+
+      // Place player last to ensure visibility
+      const playerGridPos = worldToGrid(playerPos.x, playerPos.z);
+      if (playerGridPos) {
+        const [px, pz] = playerGridPos;
+        grid[pz][px] = {
+          char: "☰",
+          color: "yellow",
+          name: "You",
+          type: "player",
+        };
+      }
+
+      const mapDisplay = container([
+        // Title with zoom and range information
+        text(
+          `Zone Map (Zoom ${zoom}) - ${blocksPerChar * mapWidth} x ${blocksPerChar * mapHeight} blocks\n`,
+          {
+            style: { color: "gold", styles: ["bold"] },
+          },
+        ),
+
+        // Compass (using monospace chars)
+        text("     N     \n", { style: { color: "aqua" } }),
+        text("  W  +  E  \n", { style: { color: "aqua" } }),
+        text("     S     \n", { style: { color: "aqua" } }),
+
+        // Map content
+        ...grid.map((row) =>
+          container([
+            text("| ", { style: { color: "gray" } }), // Left border
+            ...row.map((cell) =>
+              text(cell.char, {
+                style: { color: cell.color },
+                hover: cell.name
+                  ? `${cell.name}${cell.type ? ` (${cell.type})` : ""}`
+                  : undefined,
+              }),
+            ),
+            text("|", { style: { color: "gray" } }), // Right border
+            text("\n"),
+          ]),
+        ),
+
+        // Scale and legend
+        text(
+          `\nScale: 1 character = ${blocksPerChar}x${blocksPerChar} blocks\n`,
+          {
+            style: { color: "gray" },
+          },
+        ),
+
+        text("\nLegend: ", { style: { color: "gold" } }),
+        text("P ", { style: { color: "yellow" } }),
+        text("You  ", { style: { color: "gray" } }),
+        text("H ", { style: { color: "aqua" } }),
+        text("Hub  ", { style: { color: "gray" } }),
+        text("Z ", { style: { color: "white" } }),
+        text("Zone  ", { style: { color: "gray" } }),
+        text("# ", { style: { color: "white" } }),
+        text("Territory  ", { style: { color: "gray" } }),
+        text("█ ", { style: { color: "gray" } }),
+        text("Empty\n", { style: { color: "gray" } }),
+
+        // Zoom controls
+        text("\nZoom: ", { style: { color: "gold" } }),
+        button("[-]", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: `/zones map ${Math.min(3, zoom + 1)}`,
+          },
+          disabled: zoom === 3,
+        }),
+        text(` ${zoom} `, { style: { color: "yellow" } }),
+        button("[+]", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: `/zones map ${Math.max(1, zoom - 1)}`,
+          },
+          disabled: zoom === 1,
+        }),
+      ]);
+
+      messages = await tellraw(
+        sender,
+        mapDisplay.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+      messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages, error: error.message };
+    }
+  }
+
+  @Event("denorite_connected")
+  async initializeMarkerSets({
+    bluemap,
+    kv,
+    log,
+  }: ScriptContext): Promise<void> {
+    try {
+      // Remove existing marker set if it exists
+      try {
+        await bluemap.removeMarkerSet("zones");
+      } catch (error) {
+        // Ignore error if marker set doesn't exist
+      }
+
+      // Create fresh marker set
       await bluemap.createMarkerSet("zones", {
         label: "Protected Zones",
         toggleable: true,
@@ -1040,7 +2096,37 @@ export class Zones {
         sorting: 1,
       });
 
-      log("Zone marker set initialized");
+      // Re-register all zone markers
+      const zones = [];
+      const entriesIterator = kv.list({ prefix: ["zones"] });
+      for await (const entry of entriesIterator) {
+        const zone = entry.value as Zone;
+        zones.push(zone);
+      }
+
+      // Add markers for each zone with team colors
+      for (const zone of zones) {
+        try {
+          // Get team data for color
+          const teamResult = await kv.get(["teams", zone.teamId]);
+          const teamData = teamResult.value;
+          if (!teamData) {
+            log(`Warning: Team not found for zone ${zone.id}`);
+            continue;
+          }
+
+          // Update markers with team color
+          await this.updateZoneMarkers(zone, teamData.color, bluemap);
+
+          // Add small delay to prevent overwhelming the server
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          log(`Error creating markers for zone ${zone.id}: ${error.message}`);
+          continue;
+        }
+      }
+
+      log(`Zone marker set initialized with ${zones.length} zones`);
     } catch (error) {
       log(`Error initializing zone markers: ${error.message}`);
     }

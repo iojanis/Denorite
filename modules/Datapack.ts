@@ -105,6 +105,51 @@ export class DatapackManager {
     }
   }
 
+  @Command(['datapack'])
+  @Description('Datapack management commands')
+  @Permission('operator')
+  async datapack({ params, kv, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages = [];
+
+    try {
+      messages = await tellraw(sender, JSON.stringify([
+        {text: "=== Datapack Commands ===\n", color: "gold", bold: true},
+        {text: "/datapack search <query>", color: "yellow"},
+        {text: " - Search for datapacks on Modrinth\n", color: "gray"},
+        {text: "/datapack install <slug>", color: "yellow"},
+        {text: " - Install a datapack from Modrinth\n", color: "gray"},
+        {text: "/datapack uninstall <slug>", color: "yellow"},
+        {text: " - Remove an installed datapack\n", color: "gray"},
+        {text: "/datapack installed", color: "yellow"},
+        {text: " - View all installed datapacks\n", color: "gray"},
+        {text: "/datapack update", color: "yellow"},
+        {text: " - Check for and install datapack updates\n", color: "gray"},
+        {text: "\n", color: "white"},
+        {
+          text: "[Suggest Command]",
+          color: "green",
+          clickEvent: {
+            action: "suggest_command",
+            value: "/datapack "
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to write a datapack command"
+          }
+        }
+      ]));
+
+      return { messages };
+    } catch (error) {
+      messages = await tellraw(sender, JSON.stringify({
+        text: `Error: ${error.message}`,
+        color: "red"
+      }));
+      return { messages, error: error.message };
+    }
+  }
+
   @Command(['datapack', 'search'])
   @Description('Search for datapacks on Modrinth')
   @Permission('operator')
@@ -140,7 +185,7 @@ export class DatapackManager {
       for (const hit of results.hits.slice(0, 5)) {
         const datapack = hit as ModrinthProject;
         messages = await tellraw(sender, JSON.stringify([
-          { text: "\n" },
+          {text: "\n"},
           {
             text: datapack.title,
             color: "yellow",
@@ -154,10 +199,10 @@ export class DatapackManager {
               value: "Click to install"
             }
           },
-          { text: ` (${datapack.slug})\n`, color: "gray" },
-          { text: `${datapack.description}\n`, color: "white" },
-          { text: `Categories: ${datapack.categories.join(", ")}\n`, color: "aqua" },
-          { text: `Downloads: ${datapack.downloads}`, color: "green" }
+          {text: ` (${datapack.slug})\n`, color: "gray"},
+          {text: `${datapack.description}\n`, color: "white"},
+          {text: `Categories: ${datapack.categories.join(", ")}\n`, color: "aqua"},
+          {text: `Downloads: ${datapack.downloads}`, color: "green"}
         ]));
       }
 
@@ -329,7 +374,7 @@ export class DatapackManager {
 
       for (const datapack of datapacks) {
         messages = await tellraw(sender, JSON.stringify([
-          { text: "\n" },
+          {text: "\n"},
           {
             text: datapack.title,
             color: "yellow",
@@ -342,9 +387,9 @@ export class DatapackManager {
               value: "Click to uninstall"
             }
           },
-          { text: ` (${datapack.slug})\n`, color: "gray" },
-          { text: `Version: ${datapack.version}\n`, color: "white" },
-          { text: `File: ${datapack.filename}`, color: "aqua" }
+          {text: ` (${datapack.slug})\n`, color: "gray"},
+          {text: `Version: ${datapack.version}\n`, color: "white"},
+          {text: `File: ${datapack.filename}`, color: "aqua"}
         ]));
       }
 

@@ -53,7 +53,7 @@ export interface ScriptContext {
   isOnline: (playerName: string) => boolean;
   isOperator: (playerName: string) => boolean;
   rcon: RconClient
-  tellraw: (target: unknown, message: string | TellrawComponent) => Promise<string>;
+  tellraw: (target: unknown, message: TellrawJSON) => Promise<string>;
 }
 
 export interface PlayerData {

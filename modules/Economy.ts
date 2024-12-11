@@ -1,5 +1,6 @@
 import {Module, Command, Description, Permission, Socket, Argument, Event, Online} from '../decorators.ts';
 import type { ScriptContext } from '../types.ts';
+import { text, button, container, alert, divider } from '../tellraw-ui.ts';
 
 interface EconomyConfig {
   minDepositAmount: number;
@@ -51,40 +52,46 @@ export class Economy {
     await kv.set(key, transactions);
   }
 
+  private renderCurrency(amount: number, showSign: boolean = true): UIComponent {
+    const prefix = showSign ? (amount >= 0 ? '+' : '') : '';
+    return text(`${prefix}${amount} XPL`, {
+      style: { color: amount >= 0 ? 'green' : 'red', styles: ['bold'] }
+    });
+  }
+
   @Event('player_joined')
-  async handlePlayerSync({ params, kv, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+  async handlePlayerSync({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
     const { playerName } = params;
-    let messages = [];
 
     await this.delay(1000);
 
-    if (true) {
-      const balance = await this.getBalance(kv, playerName);
-      const config = await this.getConfig(kv);
+    const balance = await this.getBalance(kv, playerName);
+    const config = await this.getConfig(kv);
 
-      messages = await tellraw(playerName, JSON.stringify([
-        { text: "Welcome to ", color: "gold" },
-        { text: "XP Bank", color: "green", bold: true },
-        { text: "!\n", color: "gold" },
-        { text: `Your current balance: `, color: "yellow" },
-        { text: `${balance} XPL`, color: "green", bold: true }
-      ]));
+    const welcomeMessage = container([
+      text('Welcome to ', { style: { color: 'gold' } }),
+      text('XP Bank', { style: { color: 'green', styles: ['bold'] } }),
+      text('!\n', { style: { color: 'gold' } }),
+      text('Your current balance: ', { style: { color: 'yellow' } }),
+      this.renderCurrency(balance, false)
+    ]);
 
-      if (balance === 0 && config.welcomeBonus > 0) {
-        await kv.set(['plugins', 'economy', 'balances', playerName], new Deno.KvU64(BigInt(config.welcomeBonus)));
-        await this.addTransaction(kv, playerName, {
-          timestamp: new Date().toISOString(),
-          type: 'bonus',
-          amount: config.welcomeBonus,
-          balance: config.welcomeBonus,
-          description: 'Welcome bonus'
-        });
+    let messages = await tellraw(playerName, welcomeMessage.render({ platform: 'minecraft', player: playerName }));
 
-        messages = await tellraw(playerName, JSON.stringify({
-          text: `You received a welcome bonus of ${config.welcomeBonus} XPL!`,
-          color: "green"
-        }));
-      }
+    if (balance === 0 && config.welcomeBonus > 0) {
+      await kv.set(['plugins', 'economy', 'balances', playerName], new Deno.KvU64(BigInt(config.welcomeBonus)));
+      await this.addTransaction(kv, playerName, {
+        timestamp: new Date().toISOString(),
+        type: 'bonus',
+        amount: config.welcomeBonus,
+        balance: config.welcomeBonus,
+        description: 'Welcome bonus'
+      });
+
+      const bonusMessage = text(`You received a welcome bonus of ${config.welcomeBonus} XPL!`, {
+        style: { color: 'green' }
+      });
+      messages = await tellraw(playerName, bonusMessage.render({ platform: 'minecraft', player: playerName }));
     }
 
     return { messages };
@@ -93,147 +100,166 @@ export class Economy {
   @Command(['bank'])
   @Description('Bank management commands')
   @Permission('player')
-  async bank({ params, kv, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+  async bank({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
-    let messages = [];
 
     try {
       const balance = await this.getBalance(kv, sender);
       const config = await this.getConfig(kv);
 
-      messages = await tellraw(sender, JSON.stringify([
-        { text: "=== XP Bank Commands ===\n", color: "gold", bold: true },
-        { text: "Current Balance: ", color: "yellow" },
-        { text: `${balance} XPL\n\n`, color: "green", bold: true },
-        {
-          text: "/bank balance",
-          color: "yellow",
-          clickEvent: {
-            action: "run_command",
-            value: "/bank balance"
-          },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to view your balance and recent transactions"
+      const menuContent = container([
+        text('=== XP Bank Commands ===', { style: { color: 'gold', styles: ['bold'] } }),
+        text('\nCurrent Balance: ', { style: { color: 'yellow' } }),
+        this.renderCurrency(balance, false),
+        divider(),
+        button('Check Balance', {
+          variant: 'default',
+          onClick: {
+            action: 'run_command',
+            value: '/bank balance'
           }
-        },
-        { text: " - View your balance and recent transactions\n", color: "gray" },
-        { text: `/bank deposit <amount>`, color: "yellow" },
-        { text: ` - Deposit XP levels (min: ${config.minDepositAmount} XPL)\n`, color: "gray" },
-        { text: "/bank withdraw <amount>", color: "yellow" },
-        { text: " - Withdraw XP levels\n", color: "gray" },
-        { text: "/bank send <player> <amount>", color: "yellow" },
-        { text: ` - Send XPL to another player (fee: ${config.transferFee} XPL)\n`, color: "gray" },
-        { text: "\n\n", color: "white" },
-        {
-          text: "[Suggest Command]",
-          color: "green",
-          clickEvent: {
-            action: "suggest_command",
-            value: "/bank "
-          },
-          hoverEvent: {
-            action: "show_text",
-            value: "Click to write a bank command"
+        }),
+        text('\n'),
+        button('View History', {
+          variant: 'default',
+          onClick: {
+            action: 'run_command',
+            value: '/bank history'
           }
-        }
-      ]));
+        }),
+        text('\n'),
+        text(`\nDeposit/Withdraw Commands:`, { style: { color: 'yellow' } }),
+        button(`Quick Deposit ${config.minDepositAmount} XPL`, {
+          variant: 'success',
+          onClick: {
+            action: 'run_command',
+            value: `/bank deposit ${config.minDepositAmount}`
+          }
+        }),
+        text('\n'),
+        button('Deposit...', {
+          variant: 'ghost',
+          onClick: {
+            action: 'suggest_command',
+            value: '/bank deposit '
+          }
+        }),
+        text(` - Deposit XP (min: ${config.minDepositAmount} XPL)\n`, { style: { color: 'gray' } }),
+        button('Withdraw...', {
+          variant: 'ghost',
+          onClick: {
+            action: 'suggest_command',
+            value: '/bank withdraw '
+          }
+        }),
+        text(` - Withdraw XP\n`, { style: { color: 'gray' } }),
+        button('Send...', {
+          variant: 'ghost',
+          onClick: {
+            action: 'suggest_command',
+            value: '/bank send '
+          }
+        }),
+        text(` - Send XPL (fee: ${config.transferFee} XPL)`, { style: { color: 'gray' } })
+      ]);
 
+      const messages = await tellraw(sender, menuContent.render({ platform: 'minecraft', player: sender }));
       return { messages };
+
     } catch (error) {
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
       return { messages, error: error.message };
     }
   }
 
-  @Command(['bank', 'config'])
-  @Description('Configure bank settings')
-  @Permission('operator')
-  @Argument([
-    { name: 'setting', type: 'string', description: 'Setting to change (minDeposit/welcomeBonus/transferFee)' },
-    { name: 'value', type: 'integer', description: 'New value' }
-  ])
-  async configureBank({ params, kv, tellraw, log }: ScriptContext): Promise<{ messages: any[], success?: boolean }> {
-    const { sender, args } = params;
-    let messages = [];
-
-    try {
-      const config = await this.getConfig(kv);
-
-      switch (args.setting.toLowerCase()) {
-        case 'mindeposit':
-          config.minDepositAmount = Math.max(0, args.value);
-          break;
-        case 'welcomebonus':
-          config.welcomeBonus = Math.max(0, args.value);
-          break;
-        case 'transferfee':
-          config.transferFee = Math.max(0, args.value);
-          break;
-        default:
-          throw new Error('Invalid setting. Use minDeposit, welcomeBonus, or transferFee');
-      }
-
-      await kv.set(['plugins', 'economy', 'config'], config);
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Bank configuration updated successfully.`,
-        color: "green"
-      }));
-
-      log(`Bank config updated by ${sender}: ${args.setting} = ${args.value}`);
-      return { messages, success: true };
-    } catch (error) {
-      log(`Error in bank configuration: ${error.message}`);
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
-      return { messages, success: false, error: error.message };
-    }
-  }
-
   @Command(['bank', 'balance'])
-  @Description('Check your bank balance and recent transactions')
+  @Description('Check your bank balance')
   @Permission('player')
-  async checkBalance({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[], balance?: number, transactions?: Transaction[] }> {
+  async checkBalance({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[], balance?: number }> {
     const { sender } = params;
-    let messages = [];
 
     try {
       const balance = await this.getBalance(kv, sender);
-      const transactions = await kv.get(['plugins', 'economy', 'transactions', sender]);
-      const recentTransactions = (transactions.value || []).slice(0, 5);
 
-      messages = await tellraw(sender, JSON.stringify([
-        { text: "=== Bank Statement ===\n", color: "gold", bold: true },
-        { text: "Current Balance: ", color: "yellow" },
-        { text: `${balance} XPL\n`, color: "green", bold: true }
-      ]));
+      const balanceDisplay = container([
+        text('=== Bank Balance ===', { style: { color: 'gold', styles: ['bold'] } }),
+        text('\nCurrent Balance: ', { style: { color: 'yellow' } }),
+        this.renderCurrency(balance, false),
+        text('\n'),
+        button('View History', {
+          variant: 'outline',
+          onClick: {
+            action: 'run_command',
+            value: '/bank history'
+          }
+        }),
+        text('\n'),
+        button('Return to Menu', {
+          variant: 'ghost',
+          onClick: {
+            action: 'run_command',
+            value: '/bank'
+          }
+        })
+      ]);
 
-      if (recentTransactions.length > 0) {
-        messages = await tellraw(sender, JSON.stringify({
-          text: "Recent Transactions:",
-          color: "yellow"
-        }));
+      const messages = await tellraw(sender, balanceDisplay.render({ platform: 'minecraft', player: sender }));
+      return { messages, balance };
 
-        for (const tx of recentTransactions) {
-          const sign = tx.type === 'withdraw' || tx.type === 'transfer' ? '-' : '+';
-          messages = await tellraw(sender, JSON.stringify({
-            text: `${new Date(tx.timestamp).toLocaleString()}: ${sign}${tx.amount} XPL (${tx.description})`,
-            color: "gray"
-          }));
-        }
-      }
-
-      return { messages, balance, transactions: recentTransactions };
     } catch (error) {
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
+      return { messages, error: error.message };
+    }
+  }
+
+  @Command(['bank', 'history'])
+  @Description('View transaction history')
+  @Permission('player')
+  async viewHistory({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[], transactions?: Transaction[] }> {
+    const { sender } = params;
+
+    try {
+      const transactions = await kv.get(['plugins', 'economy', 'transactions', sender]);
+      const recentTransactions = (transactions.value || []).slice(0, 10);
+
+      const historyContent = container([
+        text('=== Transaction History ===', { style: { color: 'gold', styles: ['bold'] } }),
+        text('\n\n'),
+        ...recentTransactions.map(tx => container([
+          this.renderCurrency(tx.amount),
+          text(` - ${tx.description}\n`, { style: { color: 'gray' } }),
+          text(`${new Date(tx.timestamp).toLocaleString()}\n`, { style: { color: 'dark_gray' } })
+        ])),
+        text('\n'),
+        button('Return to Menu', {
+          variant: 'ghost',
+          onClick: {
+            action: 'run_command',
+            value: '/bank'
+          }
+        })
+      ]);
+
+      const messages = await tellraw(sender, historyContent.render({ platform: 'minecraft', player: sender }));
+      return { messages, transactions: recentTransactions };
+
+    } catch (error) {
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
       return { messages, error: error.message };
     }
   }
@@ -248,7 +274,6 @@ export class Economy {
   async deposit({ params, kv, tellraw, api, log }: ScriptContext): Promise<{ messages: any[], success?: boolean, newBalance?: number }> {
     const { sender, args } = params;
     const amount = args.amount;
-    let messages = [];
 
     try {
       const config = await this.getConfig(kv);
@@ -265,7 +290,7 @@ export class Economy {
       await api.xp('remove', sender, amount, 'levels');
 
       const currentBalance = await this.getBalance(kv, sender);
-      const newBalance = currentBalance + amount;
+      const newBalance = currentBalance + parseInt(amount);
 
       await kv.atomic()
         .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(newBalance)))
@@ -279,19 +304,34 @@ export class Economy {
         description: 'XP level deposit'
       });
 
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Successfully deposited ${amount} XPL. New balance: ${newBalance} XPL`,
-        color: "green"
-      }));
+      const successMessage = container([
+        text('Deposit Successful!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('Amount: ', { style: { color: 'gray' } }),
+        this.renderCurrency(amount),
+        text('\nNew Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(newBalance, false),
+        text('\n'),
+        button('View History', {
+          variant: 'outline',
+          onClick: {
+            action: 'run_command',
+            value: '/bank history'
+          }
+        })
+      ]);
 
+      const messages = await tellraw(sender, successMessage.render({ platform: 'minecraft', player: sender }));
       log(`${sender} deposited ${amount} XPL. New balance: ${newBalance}`);
+
       return { messages, success: true, newBalance };
     } catch (error) {
       log(`Error in deposit: ${error.message}`);
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Deposit Failed',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
       return { messages, success: false, error: error.message };
     }
   }
@@ -306,7 +346,6 @@ export class Economy {
   async withdraw({ params, kv, tellraw, api, log }: ScriptContext): Promise<{ messages: any[], success?: boolean, newBalance?: number }> {
     const { sender, args } = params;
     const amount = args.amount;
-    let messages = [];
 
     try {
       if (amount <= 0) {
@@ -318,7 +357,7 @@ export class Economy {
         throw new Error(`Insufficient balance. You only have ${currentBalance} XPL`);
       }
 
-      const newBalance = currentBalance - amount;
+      const newBalance = currentBalance - parseInt(amount);
 
       const result = await kv.atomic()
         .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(newBalance)))
@@ -333,24 +372,39 @@ export class Economy {
       await this.addTransaction(kv, sender, {
         timestamp: new Date().toISOString(),
         type: 'withdraw',
-        amount,
+        amount: -amount,
         balance: newBalance,
         description: 'XP level withdrawal'
       });
 
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Successfully withdrew ${amount} XPL. New balance: ${newBalance} XPL`,
-        color: "green"
-      }));
+      const successMessage = container([
+        text('Withdrawal Successful!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('Amount: ', { style: { color: 'gray' } }),
+        this.renderCurrency(-amount),
+        text('\nNew Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(newBalance, false),
+        text('\n'),
+        button('View History', {
+          variant: 'outline',
+          onClick: {
+            action: 'run_command',
+            value: '/bank history'
+          }
+        })
+      ]);
 
+      const messages = await tellraw(sender, successMessage.render({ platform: 'minecraft', player: sender }));
       log(`${sender} withdrew ${amount} XPL. New balance: ${newBalance}`);
+
       return { messages, success: true, newBalance };
     } catch (error) {
       log(`Error in withdrawal: ${error.message}`);
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Withdrawal Failed',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
       return { messages, success: false, error: error.message };
     }
   }
@@ -370,7 +424,6 @@ export class Economy {
   }> {
     const { sender, args } = params;
     const { player: receiver, amount } = args;
-    let messages = [];
 
     try {
       if (sender === receiver) {
@@ -387,7 +440,6 @@ export class Economy {
 
       const receiverBalance = await this.getBalance(kv, receiver);
 
-      // Perform transfer atomically
       const result = await kv.atomic()
         .set(['plugins', 'economy', 'balances', sender], new Deno.KvU64(BigInt(senderBalance - totalAmount)))
         .set(['plugins', 'economy', 'balances', receiver], new Deno.KvU64(BigInt(receiverBalance + amount)))
@@ -397,11 +449,10 @@ export class Economy {
         throw new Error("Transfer failed. Please try again");
       }
 
-      // Record transactions
       await this.addTransaction(kv, sender, {
         timestamp: new Date().toISOString(),
         type: 'transfer',
-        amount: totalAmount,
+        amount: -totalAmount,
         balance: senderBalance - totalAmount,
         description: `Transfer to ${receiver} (including ${config.transferFee} XPL fee)`
       });
@@ -414,30 +465,50 @@ export class Economy {
         description: `Transfer from ${sender}`
       });
 
-      // Notify both parties
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Sent ${amount} XPL to ${receiver} (fee: ${config.transferFee} XPL). New balance: ${senderBalance - totalAmount} XPL`,
-        color: "green"
-      }));
+      // Notify sender
+      const senderMessage = container([
+        text('Transfer Successful!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('Sent to: ', { style: { color: 'gray' } }),
+        text(receiver, { style: { color: 'yellow' } }),
+        text('\nAmount: ', { style: { color: 'gray' } }),
+        this.renderCurrency(amount),
+        text(`\nFee: ${config.transferFee} XPL\n`, { style: { color: 'gray' } }),
+        text('New Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(senderBalance - totalAmount, false)
+      ]);
 
-      messages = await tellraw(receiver, JSON.stringify({
-        text: `Received ${amount} XPL from ${sender}. New balance: ${receiverBalance + amount} XPL`,
-        color: "green"
-      }));
+      // Notify receiver
+      const receiverMessage = container([
+        text('Transfer Received!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('From: ', { style: { color: 'gray' } }),
+        text(sender, { style: { color: 'yellow' } }),
+        text('\nAmount: ', { style: { color: 'gray' } }),
+        this.renderCurrency(amount),
+        text('\nNew Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(receiverBalance + amount, false)
+      ]);
+
+      const messages = [
+        await tellraw(sender, senderMessage.render({ platform: 'minecraft', player: sender })),
+        await tellraw(receiver, receiverMessage.render({ platform: 'minecraft', player: receiver }))
+      ];
 
       log(`${sender} sent ${amount} XPL to ${receiver} (fee: ${config.transferFee})`);
+
       return {
-        messages,
+        messages: messages.flat(),
         success: true,
         senderNewBalance: senderBalance - totalAmount,
         receiverNewBalance: receiverBalance + amount
       };
     } catch (error) {
       log(`Error in transfer: ${error.message}`);
-      messages = await tellraw(sender, JSON.stringify({
-        text: `Error: ${error.message}`,
-        color: "red"
-      }));
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Transfer Failed',
+        description: error.message
+      });
+      const messages = await tellraw(sender, errorMessage.render({ platform: 'minecraft', player: sender }));
       return { messages, success: false, error: error.message };
     }
   }

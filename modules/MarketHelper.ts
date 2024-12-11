@@ -1,5 +1,6 @@
-import { Module, Socket, Permission, Event } from '../decorators.ts';
-import { ScriptContext } from '../types.ts';
+import { Module, Socket, Permission, Event } from "../decorators.ts";
+import { ScriptContext } from "../types.ts";
+import { StoredItem } from "./InventoryHelper.ts";
 
 interface ItemTag {
   Damage?: number;
@@ -21,175 +22,238 @@ interface StoreItem {
 }
 
 @Module({
-  name: 'Market',
-  version: '1.0.1'
+  name: "Market",
+  version: "1.0.2",
 })
 export class Market {
-  private readonly STORE_KEY = ['store', 'items'];
+  private readonly USER_STORE_PREFIX = "store:user:";
 
-  @Socket('set_price')
-  @Permission('player')
-  async handleSetPrice({ params, kv, api, log }: ScriptContext): Promise<{ success: boolean }> {
+  private getUserStoreKey(username: string): string[] {
+    return [this.USER_STORE_PREFIX + username];
+  }
+
+  @Socket("get_market")
+  @Permission("player")
+  async handleGetMarket({ kv }: ScriptContext): Promise<{
+    success: boolean;
+    data: { listings: MarketListing[] };
+  }> {
     try {
-      const { item_id, price, min = 0.1 } = params;
+      const itemMap = new Map<string, MarketListing>();
 
-      if (price < 0) {
-        throw new Error('Price cannot be negative');
+      // Iterate through all user stores
+      for await (const entry of kv.list({ prefix: ["store", "user"] })) {
+        const username = entry.key[2]; // ['store', 'user', 'username']
+        const store = await kv.get<{ items: StoredItem[] }>(entry.key);
+
+        if (store.value?.items) {
+          // Process each item in the user's store
+          for (const item of store.value.items) {
+            if (item.price > 0 && item.count > 0) {
+              // Get or create the market listing for this item
+              let listing = itemMap.get(item.id);
+              if (!listing) {
+                listing = {
+                  id: item.id,
+                  values: [],
+                };
+                itemMap.set(item.id, listing);
+              }
+
+              // Add this seller's offering
+              listing.values.push({
+                seller: username,
+                count: item.count,
+                price: item.price,
+                tag: item.tag,
+              });
+            }
+          }
+        }
       }
 
-      if (price > 0 && price < min) {
-        throw new Error(`Minimum price is ${min}`);
-      }
+      // Convert map to array and sort by item ID
+      const listings = Array.from(itemMap.values()).sort((a, b) =>
+        a.id.localeCompare(b.id),
+      );
 
-      // Update store
-      const store = await kv.get<{ items: StoreItem[] }>(this.STORE_KEY);
-      const storeItems = store.value?.items || [];
-
-      const storeItem = storeItems.find(item => item.id === item_id);
-      const userValue = storeItem?.values.find(v => v.username === params.sender);
-
-      if (!storeItem || !userValue) {
-        throw new Error('Item not found in your storage');
-      }
-
-      userValue.price = price;
-      await kv.set(this.STORE_KEY, { items: storeItems });
-
-      await api.tellraw(params.sender, JSON.stringify({
-        text: price > 0
-          ? `Listed ${item_id} for ${price} coins`
-          : `Unlisted ${item_id} from market`,
-        color: "green"
-      }));
-
-      log(`Player ${params.sender} set price of ${item_id} to ${price}`);
-      return { success: true };
-
+      return {
+        success: true,
+        data: { listings },
+      };
     } catch (error) {
-      log(`Error setting price: ${error.message}`);
+      console.error("Market listing error:", error);
       throw error;
     }
   }
 
-  @Socket('buy_item')
-  @Permission('player')
-  async handleBuyItem({ params, kv, api, log }: ScriptContext): Promise<{ success: boolean }> {
+  @Socket("buy_item")
+  @Permission("player")
+  async handleBuyItem({
+    params,
+    kv,
+    api,
+    tellraw,
+    log,
+  }: ScriptContext): Promise<{ success: boolean }> {
     try {
       const { item_id, seller_username, amount } = params;
 
-      // Check store for item
-      const store = await kv.get<{ items: StoreItem[] }>(this.STORE_KEY);
-      const storeItems = store.value?.items || [];
-
-      const storeItem = storeItems.find(item => item.id === item_id);
-      const sellerValue = storeItem?.values.find(v => v.username === seller_username);
-
-      if (!storeItem || !sellerValue) {
-        throw new Error('Item not found in seller\'s storage');
+      if (params.sender === seller_username) {
+        throw new Error("You cannot buy your own items");
       }
 
-      if (sellerValue.count < amount) {
-        throw new Error('Seller does not have enough items');
+      // Get seller's store
+      const sellerStore = await kv.get<{ items: StoredItem[] }>([
+        "store",
+        "user",
+        seller_username,
+      ]);
+      const sellerItems = sellerStore.value?.items || [];
+
+      const sellerItem = sellerItems.find((item) => item.id === item_id);
+      if (!sellerItem) {
+        throw new Error("Item not found in seller's storage");
       }
 
-      if (!sellerValue.price || sellerValue.price <= 0) {
-        throw new Error('Item is not for sale');
+      if (sellerItem.count < amount) {
+        throw new Error("Seller does not have enough items");
       }
 
-      const totalCost = sellerValue.price * amount;
+      if (!sellerItem.price || sellerItem.price <= 0) {
+        throw new Error("Item is not for sale");
+      }
+
+      const totalCost = BigInt(Math.floor(sellerItem.price * amount));
 
       // Check buyer's XP balance
-      const balanceResponse = await api.executeCommand(`xp query ${params.sender} levels`);
-      const balance = parseInt(balanceResponse.match(/\d+/)?.[0] || '0');
+      const buyerBalanceResult = await kv.get<Deno.KvU64>([
+        "plugins",
+        "economy",
+        "balances",
+        params.sender,
+      ]);
+      const buyerBalance = buyerBalanceResult.value?.value || BigInt(0);
 
-      if (balance < totalCost) {
-        throw new Error('Insufficient funds');
+      if (buyerBalance < totalCost) {
+        throw new Error(`Insufficient XP levels. Need ${totalCost} XPL`);
       }
 
-      // Transfer XP
-      await api.executeCommand(`xp add ${params.sender} -${totalCost} levels`);
-      await api.executeCommand(`xp add ${seller_username} ${totalCost} levels`);
+      // Get buyer's store
+      const buyerStore = await kv.get<{ items: StoredItem[] }>([
+        "store",
+        "user",
+        params.sender,
+      ]);
+      const buyerItems = buyerStore.value?.items || [];
 
-      // Update store
-      sellerValue.count -= amount;
-
-      // Give item to buyer
-      const buyerValue = storeItem.values.find(v => v.username === params.sender);
-      if (buyerValue) {
-        buyerValue.count += amount;
+      // Find or create buyer's item entry
+      let buyerItem = buyerItems.find((item) => item.id === item_id);
+      if (buyerItem) {
+        buyerItem.count += amount;
       } else {
-        storeItem.values.push({
-          username: params.sender,
+        buyerItem = {
+          id: item_id,
           count: amount,
-          price: 0
-        });
+          price: 0,
+          tag: sellerItem.tag,
+        };
+        buyerItems.push(buyerItem);
       }
 
-      // Clean up if seller has no more items
-      if (sellerValue.count === 0) {
-        storeItem.values = storeItem.values.filter(v => v.username !== seller_username);
-        if (storeItem.values.length === 0) {
-          storeItems.splice(storeItems.indexOf(storeItem), 1);
-        }
+      // Update seller's items
+      const updatedSellerItems = sellerItems
+        .map((item) => {
+          if (item.id === item_id) {
+            return { ...item, count: item.count - amount };
+          }
+          return item;
+        })
+        .filter((item) => item.count > 0);
+
+      const sellerBalanceResult = await kv.get<Deno.KvU64>([
+        "plugins",
+        "economy",
+        "balances",
+        seller_username,
+      ]);
+      const sellerBalance = sellerBalanceResult.value?.value || BigInt(0);
+
+      // Update balances and inventories atomically
+      const result = await kv
+        .atomic()
+        // Update XP balances
+        .set(
+          ["plugins", "economy", "balances", params.sender],
+          new Deno.KvU64(buyerBalance - totalCost),
+        )
+        .set(
+          ["plugins", "economy", "balances", seller_username],
+          new Deno.KvU64(sellerBalance + totalCost),
+        )
+        // Update stores
+        .set(["store", "user", seller_username], { items: updatedSellerItems })
+        .set(["store", "user", params.sender], { items: buyerItems })
+        .commit();
+
+      if (!result.ok) {
+        throw new Error("Transaction failed. Please try again");
       }
 
-      await kv.set(this.STORE_KEY, { items: storeItems });
+      // Record transactions
+      await this.addTransaction(kv, params.sender, {
+        timestamp: new Date().toISOString(),
+        type: "market_buy",
+        amount: Number(-totalCost),
+        balance: Number(buyerBalance - totalCost),
+        description: `Bought ${amount} ${item_id} from ${seller_username}`,
+      });
+
+      await this.addTransaction(kv, seller_username, {
+        timestamp: new Date().toISOString(),
+        type: "market_sell",
+        amount: Number(totalCost),
+        balance: Number(sellerBalance + totalCost),
+        description: `Sold ${amount} ${item_id} to ${params.sender}`,
+      });
 
       // Notify both parties
-      await api.tellraw(params.sender, JSON.stringify({
-        text: `Bought ${amount} ${item_id} from ${seller_username} for ${totalCost} coins`,
-        color: "green"
-      }));
+      await tellraw(
+        params.sender,
+        JSON.stringify({
+          text: `Bought ${amount} ${item_id} from ${seller_username} for ${Number(totalCost)} XPL`,
+          color: "green",
+        }),
+      );
 
-      await api.tellraw(seller_username, JSON.stringify({
-        text: `${params.sender} bought ${amount} ${item_id} for ${totalCost} coins`,
-        color: "green"
-      }));
+      await tellraw(
+        seller_username,
+        JSON.stringify({
+          text: `${params.sender} bought ${amount} ${item_id} for ${Number(totalCost)} XPL`,
+          color: "green",
+        }),
+      );
 
-      log(`Player ${params.sender} bought ${amount} ${item_id} from ${seller_username} for ${totalCost}`);
+      log(
+        `Player ${params.sender} bought ${amount} ${item_id} from ${seller_username} for ${Number(totalCost)} XPL`,
+      );
       return { success: true };
-
     } catch (error) {
       log(`Error buying item: ${error.message}`);
       throw error;
     }
   }
 
-  // Get market listings (items with price > 0)
-  @Socket('get_market')
-  async handleGetMarket({ kv, params }: ScriptContext): Promise<{ success: boolean; data: { items: StoreItem[] } }> {
-    const store = await kv.get<{ items: StoreItem[] }>(this.STORE_KEY);
-
-    console.dir(store)
-    const marketItems = store.value?.items.map(item => ({
-      ...item,
-      values: item.values.filter(v => v.price > 0 && v.count > 0)
-    })).filter(item => item.values.length > 0) || [];
-    console.dir(marketItems)
-
-    return {
-      success: true,
-      data: {
-        items: marketItems
-      }
-    };
-  }
-
-  // Get all seller listings
-  @Socket('get_my_listings')
-  @Permission('player')
-  async handleGetMyListings({ kv, params }: ScriptContext): Promise<{ success: boolean; data: { items: StoreItem[] } }> {
-    const store = await kv.get<{ items: StoreItem[] }>(this.STORE_KEY);
-    const myItems = store.value?.items.map(item => ({
-      ...item,
-      values: item.values.filter(v => v.username === params.sender)
-    })).filter(item => item.values.length > 0) || [];
-
-    return {
-      success: true,
-      data: {
-        items: myItems
-      }
-    };
+  private async addTransaction(
+    kv: any,
+    player: string,
+    transaction: Transaction,
+  ): Promise<void> {
+    const key = ["plugins", "economy", "transactions", player];
+    const existing = await kv.get(key);
+    const transactions = existing.value || [];
+    transactions.unshift(transaction);
+    if (transactions.length > 50) transactions.length = 50;
+    await kv.set(key, transactions);
   }
 }

@@ -433,7 +433,7 @@ export class ScriptInterpreter {
     this.logger.debug(`Registered socket handler: ${eventName} -> ${moduleName}.${methodName}`);
   }
 
-  async executeCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<void> {
+  async executeCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<unknown> {
     let fullCommandPath = command;
     if (subcommand) {
       fullCommandPath += ` ${subcommand}`;
@@ -457,7 +457,7 @@ export class ScriptInterpreter {
     }
 
     const context = this.contextFactory({ command, subcommand, ...args as Record<string, unknown>, args, sender, senderType });
-    await commandMethod.call(moduleInstance, context);
+    return await commandMethod.call(moduleInstance, context);
   }
 
   async executeEvent(eventType: string, data: unknown): Promise<void> {

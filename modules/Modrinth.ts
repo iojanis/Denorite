@@ -38,7 +38,7 @@ interface InstalledMod {
   description: 'Manage Fabric mods from Modrinth'
 })
 export class ModrinthManager {
-  // Helper methods remain unchanged
+
   private async getServerVersion(kv: Deno.Kv): Promise<string> {
     const version = await kv.get(['server', 'version']);
     return version.value as string || '1.21.1';
@@ -107,6 +107,51 @@ export class ModrinthManager {
     }
   }
 
+  @Command(['mod'])
+  @Description('Modrinth mod management commands')
+  @Permission('operator')
+  async mod({ params, kv, tellraw, api,  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+    let messages = [];
+
+    try {
+      messages = await tellraw(sender, JSON.stringify([
+        {text: "=== Modrinth Mod Commands ===\n", color: "gold", bold: true},
+        {text: "/mod search <query>", color: "yellow"},
+        {text: " - Search for Fabric mods on Modrinth\n", color: "gray"},
+        {text: "/mod install <slug>", color: "yellow"},
+        {text: " - Install a mod from Modrinth\n", color: "gray"},
+        {text: "/mod uninstall <slug>", color: "yellow"},
+        {text: " - Remove an installed mod\n", color: "gray"},
+        {text: "/mod list", color: "yellow"},
+        {text: " - View all installed mods\n", color: "gray"},
+        {text: "/mod update", color: "yellow"},
+        {text: " - Check for and install mod updates\n", color: "gray"},
+        {text: "\n", color: "white"},
+        {
+          text: "[Suggest Command]",
+          color: "green",
+          clickEvent: {
+            action: "suggest_command",
+            value: "/mod "
+          },
+          hoverEvent: {
+            action: "show_text",
+            value: "Click to write a mod command"
+          }
+        }
+      ]));
+
+      return { messages };
+    } catch (error) {
+      messages = await tellraw(sender, JSON.stringify({
+        text: `Error: ${error.message}`,
+        color: "red"
+      }));
+      return { messages, error: error.message };
+    }
+  }
+
   @Command(['mod', 'search'])
   @Description('Search for Fabric mods on Modrinth')
   @Permission('operator')
@@ -142,7 +187,7 @@ export class ModrinthManager {
       for (const hit of results.hits.slice(0, 5)) {
         const project = hit as ModrinthProject;
         messages = await tellraw(sender, JSON.stringify([
-          { text: "\n" },
+          {text: "\n"},
           {
             text: project.title,
             color: "yellow",
@@ -156,9 +201,9 @@ export class ModrinthManager {
               value: "Click to install"
             }
           },
-          { text: ` (${project.slug})\n`, color: "gray" },
-          { text: `${project.description}\n`, color: "white" },
-          { text: `Categories: ${project.categories.join(", ")}`, color: "aqua" }
+          {text: ` (${project.slug})\n`, color: "gray"},
+          {text: `${project.description}\n`, color: "white"},
+          {text: `Categories: ${project.categories.join(", ")}`, color: "aqua"}
         ]));
       }
 
@@ -323,7 +368,7 @@ export class ModrinthManager {
 
       for (const mod of mods) {
         messages = await tellraw(sender, JSON.stringify([
-          { text: "\n" },
+          {text: "\n"},
           {
             text: mod.title,
             color: "yellow",
@@ -336,9 +381,9 @@ export class ModrinthManager {
               value: "Click to uninstall"
             }
           },
-          { text: ` (${mod.slug})\n`, color: "gray" },
-          { text: `Version: ${mod.version}\n`, color: "white" },
-          { text: `File: ${mod.filename}`, color: "aqua" }
+          {text: ` (${mod.slug})\n`, color: "gray"},
+          {text: `Version: ${mod.version}\n`, color: "white"},
+          {text: `File: ${mod.filename}`, color: "aqua"}
         ]));
       }
 

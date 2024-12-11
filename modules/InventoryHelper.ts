@@ -10,7 +10,7 @@ interface ItemTag {
   [key: string]: any;
 }
 
-interface StoredItem {
+export interface StoredItem {
   id: string;
   count: number;
   price: number;
@@ -29,7 +29,7 @@ interface InventoryItem {
   version: '1.0.2'
 })
 export class Storage {
-  private readonly USER_STORE_PREFIX = 'store:user:';
+
   private readonly FORBIDDEN_ITEMS = [
     'enchanted_book',
     'lingering_potion',
@@ -47,7 +47,7 @@ export class Storage {
   ];
 
   private getUserStoreKey(username: string): string[] {
-    return [this.USER_STORE_PREFIX + username];
+    return ['store', 'user', username];
   }
 
   @Socket('get_inventory')
@@ -224,41 +224,6 @@ export class Storage {
       return { success: true };
     } catch (error) {
       log(`Error downloading item: ${error.message}`);
-      throw error;
-    }
-  }
-
-  @Socket('get_market')
-  @Permission('player')
-  async handleGetMarket({ kv }: ScriptContext): Promise<{ success: boolean; data: { listings: Array<StoredItem & { seller: string }> } }> {
-    try {
-      // List all keys with our prefix
-      const keys = await kv.list(this.USER_STORE_PREFIX);
-
-      // Fetch all user stores in parallel
-      const stores = await Promise.all(
-        keys.map(async key => {
-          const username = key[0].slice(this.USER_STORE_PREFIX.length);
-          const store = await kv.get<{ items: StoredItem[] }>(key);
-          return { username, items: store.value?.items || [] };
-        })
-      );
-
-      // Collect all items with prices > 0
-      const listings = stores.flatMap(store =>
-        store.items
-          .filter(item => item.price > 0)
-          .map(item => ({
-            ...item,
-            seller: store.username
-          }))
-      );
-
-      return {
-        success: true,
-        data: { listings }
-      };
-    } catch (error) {
       throw error;
     }
   }

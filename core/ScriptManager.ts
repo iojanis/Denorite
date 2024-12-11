@@ -173,9 +173,9 @@ export class ScriptManager {
     }
   }
 
-  async handleCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<void> {
+  async handleCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<unknown> {
     try {
-      await this.interpreter.executeCommand(command, subcommand, args, sender, senderType);
+      return await this.interpreter.executeCommand(command, subcommand, args, sender, senderType);
     } catch (error) {
       this.logger.error(`Error executing command: ${error.message}`);
     }
@@ -332,17 +332,76 @@ export class ScriptManager {
 
       files: filesAPI,
 
-      tellraw: async (target: string, message: string | TellrawComponent) => {
-        // Convert string messages to TellrawComponent
+      tellraw: async (target: string, message: string | TellrawComponent | TellrawComponent[]) => {
+        // Helper to try parsing JSON string components
+        const tryParseJSON = (str: string) => {
+          try {
+            return JSON.parse(str);
+          } catch (e) {
+            return null;
+          }
+        };
+
+        // If message is a string that looks like JSON
+        if (typeof message === 'string' &&
+          (message.startsWith('[{') || message.startsWith('{"'))) {
+          const parsed = tryParseJSON(message);
+          if (parsed) {
+            if (Array.isArray(parsed)) {
+              contextComponents.push(...parsed);
+            } else {
+              contextComponents.push(parsed);
+            }
+            contextComponents.push({ text: '\n' });
+
+            const jsonMessage = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+            await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
+
+            return [...contextComponents];
+          }
+        }
+
+        // If message is an array, spread it into contextComponents
+        if (Array.isArray(message)) {
+          contextComponents.push(...message);
+          contextComponents.push({ text: '\n' });
+
+          const jsonMessage = JSON.stringify(message);
+          await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
+
+          return [...contextComponents];
+        }
+
+        // If message is a component with encoded JSON text
+        if (typeof message === 'object' && 'text' in message &&
+          typeof message.text === 'string' &&
+          (message.text.startsWith('[{') || message.text.startsWith('{"'))) {
+          const parsed = tryParseJSON(message.text);
+          if (parsed) {
+            if (Array.isArray(parsed)) {
+              contextComponents.push(...parsed);
+            } else {
+              contextComponents.push(parsed);
+            }
+            contextComponents.push({ text: '\n' });
+
+            const jsonMessage = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+            await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
+
+            return [...contextComponents];
+          }
+        }
+
+        // Handle single component/string as before
         const component: TellrawComponent = typeof message === 'string'
           ? { text: message }
           : message;
 
         // Convert to JSON for Minecraft
-        const jsonMessage = JSON.stringify(component);
+        const jsonMessage = JSON.stringify([component]);
 
         // Send to Minecraft
-        await this.executeCommand(`tellraw ${target} ${message}`);
+        await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
 
         // Send to WebSocket player
         this.sendToPlayer(target, {
@@ -361,7 +420,6 @@ export class ScriptManager {
         contextComponents.push(component);
         contextComponents.push({ text: '\n' });
 
-        // Return all components in this context
         return [...contextComponents];
       },
 
@@ -411,6 +469,14 @@ export class ScriptManager {
       modules: {
         execute: this.executeModuleScript.bind(this)
       },
+      getCommands: (permission: string) => this.getCommandsByPermission(permission),
+      handleCommand: async (data: { command: string; data: { subcommand: string; arguments: unknown; sender: string; senderType: string; }; }) => this.handleCommand(
+        data.command as string,
+        data.data?.subcommand as string,
+        data.data?.arguments,
+        data.data?.sender as string,
+        data.data?.senderType as string
+      ),
 
       //to be renamed and/or removed
       sendToMinecraft: this.sendToMinecraft.bind(this),

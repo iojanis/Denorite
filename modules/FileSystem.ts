@@ -14,7 +14,7 @@ interface SenderState {
   description: 'Unix-like file system commands'
 })
 export class FileSystem {
-  private readonly BASE_DIR = Deno.cwd() + '/modules';
+  private readonly BASE_DIR = Deno.cwd() + '/';
 
   private async getCurrentDir(kv: Deno.Kv, sender: string): Promise<string> {
     const state = await kv.get<SenderState>(['fs_state', sender]);
@@ -207,10 +207,10 @@ export class FileSystem {
       const fullPath = this.getFullPath(targetPath);
       const content = await Deno.readTextFile(fullPath);
 
-      messages = await tellraw(sender, JSON.stringify({
-        text: content,
+      messages = [{
+        text: JSON.stringify(content),
         color: "white"
-      }));
+      }]
 
       log(`Displayed contents of ${targetPath}`);
       return { messages, content };

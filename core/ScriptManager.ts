@@ -112,7 +112,7 @@ export class ScriptManager {
     this.rconManager = new RconManager(
       this.logger,
       this.auth,
-      "localhost",
+        Deno.env.get('RCON_HOST'),
       25575
     );
   }

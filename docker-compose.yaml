@@ -28,10 +28,10 @@ services:
       - DENORITE_ALLOWED_ORIGIN=${DENORITE_ALLOWED_ORIGIN}
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
-      - JWT_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZW5vcml0ZS1zZXJ2ZXIiLCJleHAiOjE3NjE5MzcxOTF9.HrsbtPk6_Jn_cwVPq7NX9AHJjRn5ofkNn_BNnoYmGSk"
-      - SERVER_URL="wss://denorite.cou.ai/minecraft"
-      - MC_SERVER_URL="https://cou.ai"
-      - STRICT_MODE="true"
+      - JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZW5vcml0ZS1zZXJ2ZXIiLCJleHAiOjE3NjE5MzcxOTF9.HrsbtPk6_Jn_cwVPq7NX9AHJjRn5ofkNn_BNnoYmGSk
+      - SERVER_URL=wss://denorite.cou.ai/minecraft
+      - MC_SERVER_URL=https://cou.ai
+      - STRICT_MODE=true
     volumes:
       - modules-data:/app/modules
       - './minecraft-data:/app/minecraft-data'

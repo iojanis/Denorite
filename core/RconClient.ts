@@ -27,12 +27,14 @@ export class RconClient {
       });
       await this.authenticate();
     } catch (error) {
-      throw new Error(`Failed to connect to RCON server: ${error.message}`);
+      throw new Error(`Failed to connect to RCON server: ${error.message} ${this.host} ${this.port}`);
     }
   }
 
   private async authenticate(): Promise<void> {
     if (!this.conn) throw new Error("Not connected");
+
+    console.log(this.password)
 
     const authPacket = this.createPacket(PACKET_TYPE.AUTH, this.password);
     await this.conn.write(authPacket);

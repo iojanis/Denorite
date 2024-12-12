@@ -1322,8 +1322,8 @@ export class Zones {
   }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
     const { zoneId } = args;
-    const BASE_TP_COST = 5; // Base cost in XPL
-    const DISTANCE_MULTIPLIER = 0.01; // Cost per block traveled
+    const BASE_TP_COST = 1; // Base cost in XPL
+    const DISTANCE_MULTIPLIER = 0.001; // Cost per block traveled
 
     try {
       const zoneResult = await kv.get(["zones", zoneId]);
@@ -1875,16 +1875,17 @@ export class Zones {
       const playerTeamId = playerTeamResult.value;
 
       const zoomLevels = {
-        1: 16, // Close zoom: 16x16 blocks per character
-        2: 32, // Medium zoom: 32x32 blocks per character
-        3: 64, // Far zoom: 64x64 blocks per character
+        1: 16, // Close zoom
+        2: 32, // Medium zoom
+        3: 64, // Far zoom
       };
 
       const zoom = Math.min(Math.max(args.zoom || 2, 1), 3);
       const blocksPerChar = zoomLevels[zoom];
 
-      const mapWidth = 16;
-      const mapHeight = 8;
+      // Increased width while keeping height reasonable
+      const mapWidth = 32; // Doubled from 16
+      const mapHeight = 12; // Increased slightly
       const halfWidth = Math.floor(mapWidth / 2);
       const halfHeight = Math.floor(mapHeight / 2);
 
@@ -1893,6 +1894,37 @@ export class Zones {
         maxX: playerPos.x + halfWidth * blocksPerChar,
         minZ: playerPos.z - halfHeight * blocksPerChar,
         maxZ: playerPos.z + halfHeight * blocksPerChar,
+      };
+
+      // Define map symbols using trigrams
+      const symbols = {
+        empty: "☷ ", // Empty space (ground)
+        player: "☰ ", // Player position (heaven)
+        hub: "☱ ", // Teleport hub (lake)
+        zone: "☳ ", // Zone center (thunder)
+        territory: "☵ ", // Territory (water)
+        overlap: "☲ ", // Overlapping territories (fire)
+        border: "☴ ", // Zone border (wind)
+        corner: "☶ ", // Zone corner (mountain)
+      };
+
+      // Initialize grid
+      const grid: MapSymbol[][] = Array(mapHeight)
+        .fill(null)
+        .map(() =>
+          Array(mapWidth)
+            .fill(null)
+            .map(() => ({ char: symbols.empty, color: "gray" })),
+        );
+
+      const worldToGrid = (x: number, z: number): [number, number] | null => {
+        const gridX = Math.floor((x - bounds.minX) / blocksPerChar);
+        const gridZ = Math.floor((z - bounds.minZ) / blocksPerChar);
+
+        if (gridX >= 0 && gridX < mapWidth && gridZ >= 0 && gridZ < mapHeight) {
+          return [gridX, gridZ];
+        }
+        return null;
       };
 
       // Get zones and teams
@@ -1909,24 +1941,8 @@ export class Zones {
         teams.set(team.id, team);
       }
 
-      // Initialize grid with spaces
-      const grid: MapSymbol[][] = Array(mapHeight)
-        .fill(null)
-        .map(() =>
-          Array(mapWidth)
-            .fill(null)
-            .map(() => ({ char: "☰", color: "gray" })),
-        );
-
-      const worldToGrid = (x: number, z: number): [number, number] | null => {
-        const gridX = Math.floor((x - bounds.minX) / blocksPerChar);
-        const gridZ = Math.floor((z - bounds.minZ) / blocksPerChar);
-
-        if (gridX >= 0 && gridX < mapWidth && gridZ >= 0 && gridZ < mapHeight) {
-          return [gridX, gridZ];
-        }
-        return null;
-      };
+      // Track territory overlaps
+      const territoryMap = new Map<string, string[]>(); // gridKey -> teamIds
 
       // Place zone areas on grid
       zones.forEach((zone) => {
@@ -1947,9 +1963,32 @@ export class Zones {
             const gridPos = worldToGrid(x, z);
             if (gridPos) {
               const [gx, gz] = gridPos;
-              // Fill area with team color
+              const gridKey = `${gx},${gz}`;
+
+              // Track territory occupation
+              const occupyingTeams = territoryMap.get(gridKey) || [];
+              occupyingTeams.push(zone.teamId);
+              territoryMap.set(gridKey, occupyingTeams);
+
+              // Set appropriate symbol
+              let char = symbols.territory;
+              if (
+                x === zone.positions[0].x ||
+                x === zone.positions[2].x ||
+                z === zone.positions[0].z ||
+                z === zone.positions[2].z
+              ) {
+                char = symbols.border;
+              }
+              if (
+                (x === zone.positions[0].x || x === zone.positions[2].x) &&
+                (z === zone.positions[0].z || z === zone.positions[2].z)
+              ) {
+                char = symbols.corner;
+              }
+
               grid[gz][gx] = {
-                char: "☵", // Using # for territory
+                char,
                 color: teamColor,
                 name: zone.name,
                 type: "territory",
@@ -1958,12 +1997,12 @@ export class Zones {
           }
         }
 
-        // Place zone center marker on top
+        // Place zone center marker
         const centerPos = worldToGrid(zone.center.x, zone.center.z);
         if (centerPos) {
           const [cx, cz] = centerPos;
           grid[cz][cx] = {
-            char: zone.teleportEnabled ? "☷" : "☰", // H for hub, Z for zone center
+            char: zone.teleportEnabled ? symbols.hub : symbols.zone,
             color: teamColor,
             name: zone.name,
             type: zone.teleportEnabled ? "hub" : "zone center",
@@ -1971,12 +2010,25 @@ export class Zones {
         }
       });
 
-      // Place player last to ensure visibility
+      // Mark overlapping territories
+      territoryMap.forEach((teamIds, gridKey) => {
+        if (teamIds.length > 1) {
+          const [gx, gz] = gridKey.split(",").map(Number);
+          grid[gz][gx] = {
+            char: symbols.overlap,
+            color: "red",
+            name: "Contested Territory",
+            type: `${teamIds.length} teams`,
+          };
+        }
+      });
+
+      // Place player last
       const playerGridPos = worldToGrid(playerPos.x, playerPos.z);
       if (playerGridPos) {
         const [px, pz] = playerGridPos;
         grid[pz][px] = {
-          char: "☰",
+          char: symbols.player,
           color: "yellow",
           name: "You",
           type: "player",
@@ -1984,7 +2036,6 @@ export class Zones {
       }
 
       const mapDisplay = container([
-        // Title with zoom and range information
         text(
           `Zone Map (Zoom ${zoom}) - ${blocksPerChar * mapWidth} x ${blocksPerChar * mapHeight} blocks\n`,
           {
@@ -1992,15 +2043,11 @@ export class Zones {
           },
         ),
 
-        // Compass (using monospace chars)
-        text("     N     \n", { style: { color: "aqua" } }),
-        text("  W  +  E  \n", { style: { color: "aqua" } }),
-        text("     S     \n", { style: { color: "aqua" } }),
+        text("N\n", { style: { color: "aqua" } }),
 
         // Map content
         ...grid.map((row) =>
           container([
-            text("| ", { style: { color: "gray" } }), // Left border
             ...row.map((cell) =>
               text(cell.char, {
                 style: { color: cell.color },
@@ -2009,32 +2056,26 @@ export class Zones {
                   : undefined,
               }),
             ),
-            text("|", { style: { color: "gray" } }), // Right border
             text("\n"),
           ]),
         ),
 
-        // Scale and legend
-        text(
-          `\nScale: 1 character = ${blocksPerChar}x${blocksPerChar} blocks\n`,
-          {
-            style: { color: "gray" },
-          },
-        ),
+        text(`\nScale: 1 symbol = ${blocksPerChar}x${blocksPerChar} blocks\n`, {
+          style: { color: "gray" },
+        }),
 
         text("\nLegend: ", { style: { color: "gold" } }),
-        text("P ", { style: { color: "yellow" } }),
+        text(symbols.player, { style: { color: "yellow" } }),
         text("You  ", { style: { color: "gray" } }),
-        text("H ", { style: { color: "aqua" } }),
+        text(symbols.hub, { style: { color: "aqua" } }),
         text("Hub  ", { style: { color: "gray" } }),
-        text("Z ", { style: { color: "white" } }),
+        text(symbols.zone, { style: { color: "white" } }),
         text("Zone  ", { style: { color: "gray" } }),
-        text("# ", { style: { color: "white" } }),
-        text("Territory  ", { style: { color: "gray" } }),
-        text("█ ", { style: { color: "gray" } }),
-        text("Empty\n", { style: { color: "gray" } }),
+        text(symbols.territory, { style: { color: "white" } }),
+        text("Area  ", { style: { color: "gray" } }),
+        text(symbols.overlap, { style: { color: "red" } }),
+        text("Contested\n", { style: { color: "gray" } }),
 
-        // Zoom controls
         text("\nZoom: ", { style: { color: "gold" } }),
         button("[-]", {
           variant: "outline",

@@ -32,6 +32,7 @@ services:
       - SERVER_URL="wss://denorite.cou.ai/minecraft"
       - MC_SERVER_URL="https://cou.ai"
       - STRICT_MODE="true"
+      - MODRINTH_PROJECTS=bluemap,fabric-api
     volumes:
       - modules-data:/app/modules
       - './minecraft-data:/app/minecraft-data'

@@ -31,7 +31,7 @@ cat > /app/minecraft-data/config/denorite.json << EOJSON
     "jwtToken": "${JWT_TOKEN}",
     "serverUrl": "${SERVER_URL:-wss://denorite.cou.ai/minecraft}",
     "mcServerUrl": "${MC_SERVER_URL:-https://cou.ai}",
-    "strictMode": ${STRICT_MODE:-false}
+    "strictMode": ${STRICT_MODE:-true}
     ${ADDITIONAL_CONFIG:-}
 }
 EOJSON

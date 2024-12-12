@@ -30,7 +30,7 @@ services:
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     volumes:
       - modules-data:/app/modules
-      - './minecraft-data:/minecraft-data'
+      - './minecraft-data:/app/minecraft-data'
     depends_on:
       - kv
     deploy:
@@ -76,6 +76,7 @@ services:
       - 'MEMORY=${MINECRAFT_MEMORY:-1G}'
       - 'ENABLE_AUTOPAUSE=${MINECRAFT_ENABLE_AUTOPAUSE:-false}'
       - 'RCON_PASSWORD=${SERVICE_PASSWORD_RCON}'
+      - 'MODPACK=${DENORITE_MODPACK}'
       - 'PORT=${PORT:-25565}'
     volumes:
       - './minecraft-data:/data'

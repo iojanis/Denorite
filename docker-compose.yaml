@@ -30,13 +30,142 @@ services:
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
     volumes:
       - modules-data:/app/modules
+      - './minecraft-data:/minecraft-data'
     depends_on:
       - kv
     deploy:
       resources:
         limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
           cpus: '1.0'
           memory: 1G
+
+  mc:
+    container_name: minecraft-server
+    image: itzg/minecraft-server
+    ports:
+      - '${PORT}:25565'
+      - '24454:24454/udp'
+    environment:
+      - EULA=true
+      - 'VERSION=${MINECRAFT_VERSION:-latest}'
+      - 'TYPE=${MINECRAFT_TYPE:-FABRIC}'
+      - 'SERVER_NAME=${MINECRAFT_SERVER_NAME:-Minecraft Server}'
+      - 'MOTD=${MINECRAFT_MOTD:-Minecraft Server powered by §aCou.sh§r}'
+      - 'DIFFICULTY=${MINECRAFT_DIFFICULTY:-normal}'
+      - 'MAX_PLAYERS=${MINECRAFT_MAX_PLAYERS:-10}'
+      - 'MAX_WORLD_SIZE=${MINECRAFT_MAX_WORLD_SIZE:-10000}'
+      - 'VIEW_DISTANCE=${MINECRAFT_VIEW_DISTANCE:-10}'
+      - 'MAX_BUILD_HEIGHT=${MINECRAFT_MAX_BUILD_HEIGHT:-256}'
+      - 'MAX_TICK_TIME=${MINECRAFT_MAX_TICK_TIME:-60000}'
+      - 'ALLOW_NETHER=${MINECRAFT_ALLOW_NETHER:-true}'
+      - 'ANNOUNCE_PLAYER_ACHIEVEMENTS=${MINECRAFT_ANNOUNCE_PLAYER_ACHIEVEMENTS:-true}'
+      - 'GENERATE_STRUCTURES=${MINECRAFT_GENERATE_STRUCTURES:-true}'
+      - 'PVP=${MINECRAFT_PVP:-true}'
+      - 'FORCE_GAMEMODE=${MINECRAFT_FORCE_GAMEMODE:-false}'
+      - 'HARDCORE=${MINECRAFT_HARDCORE:-false}'
+      - 'ENABLE_COMMAND_BLOCK=${MINECRAFT_ENABLE_COMMAND_BLOCK:-false}'
+      - 'SPAWN_ANIMALS=${MINECRAFT_SPAWN_ANIMALS:-true}'
+      - 'SPAWN_MONSTERS=${MINECRAFT_SPAWN_MONSTERS:-true}'
+      - 'SPAWN_NPCS=${MINECRAFT_SPAWN_NPCS:-true}'
+      - 'SNOOPER_ENABLED=${MINECRAFT_SNOOPER_ENABLED:-true}'
+      - 'ONLINE_MODE=${MINECRAFT_ONLINE_MODE:-true}'
+      - 'PLAYER_IDLE_TIMEOUT=${MINECRAFT_PLAYER_IDLE_TIMEOUT:-0}'
+      - 'MEMORY=${MINECRAFT_MEMORY:-1G}'
+      - 'ENABLE_AUTOPAUSE=${MINECRAFT_ENABLE_AUTOPAUSE:-false}'
+      - 'RCON_PASSWORD=${SERVICE_PASSWORD_RCON}'
+      - 'PORT=${PORT:-25565}'
+    volumes:
+      - './minecraft-data:/data'
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/mc-monitor
+        - status
+        - '--host'
+        - localhost
+      interval: 2s
+      timeout: 10s
+      retries: 15
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 14G
         reservations:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '1.0'
+          memory: 6G
+
+  bluemap-web:
+    container_name: bluemap-web
+    image: nginxinc/nginx-unprivileged:alpine
+    ports:
+      - "8100:8080"
+    volumes:
+      - './minecraft-data/bluemap/web:/usr/share/nginx/html:ro'
+    environment:
+      - NGINX_ENTRYPOINT_QUIET_LOGS=1
+    command: >
+      sh -c "echo 'server {
+        listen 8080;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+      
+        add_header Access-Control-Allow-Origin \"*\" always;
+        add_header Access-Control-Allow-Methods \"GET, HEAD, OPTIONS\" always;
+        add_header Access-Control-Allow-Headers \"*\" always;
+      
+        location / {
+            try_files $$uri $$uri/ /index.html;
+        }
+
+        location /maps/ {
+            gzip_static always;
+
+            location ~* ^/maps/[^/]*/tiles/ {
+                error_page 404 = @empty;
+            }
+
+            location ~* ^/maps/[^/]*/live/ {
+                proxy_pass http://mc:8100;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $$http_upgrade;
+                proxy_set_header Connection \"upgrade\";
+                proxy_set_header Host $$host;
+      
+                error_page 502 504 = @server-offline;
+            }
+        }
+      
+        location @empty {
+            return 204;
+        }
+
+        location @server-offline {
+            try_files $$uri =204;
+        }
+
+        if ($$request_method = OPTIONS) {
+            return 204;
+        }
+      }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    depends_on:
+      - mc
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+volumes:
+  kv-data:
+  modules-data:

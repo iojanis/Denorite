@@ -114,7 +114,7 @@ export class SocketManager {
     const connectionId = crypto.randomUUID();
 
     socket.onopen = async () => {
-      this.logger.debug("New Denorite WebSocket connection established");
+      this.logger.info("New Denorite WebSocket connection established");
 
       // Add socket to script manager before emitting event
       this.scriptManager.addMinecraftSocket(socket, req);
@@ -639,7 +639,7 @@ export class SocketManager {
     const token = authHeader.split(" ")[1];
     try {
       const payload = await this.auth.verifyDenoriteToken(token);
-      this.logger.info(`Denorite token verified successfully: ${JSON.stringify(payload)}`);
+      // this.logger.info(`Denorite token verified successfully: ${JSON.stringify(payload)}`);
       return true;
     } catch (error: any) {
       this.logger.error(`Denorite client verification failed: ${error.message}`);

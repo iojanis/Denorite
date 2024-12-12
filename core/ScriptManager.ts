@@ -711,14 +711,14 @@ export class ScriptManager {
       }
     }
 
-    this.logger.info(`Registering ${rootCommands.size} root commands...`);
+    this.logger.info(`Registering ${rootCommands.size} commands...`);
 
     // Register each root command with its subcommands
     for (const rootCommand of rootCommands.values()) {
       await this.registerCommand(rootCommand);
     }
 
-    this.logger.info('All commands registered successfully.');
+    this.logger.debug('All commands registered successfully.');
   }
 
   private async registerCommand(commandData: CommandMetadata): Promise<void> {
@@ -745,7 +745,7 @@ export class ScriptManager {
         data: registrationData
       });
 
-      this.logger.info(`Command "${commandData.name}" registered successfully`);
+      this.logger.debug(`Command "${commandData.name}" registered successfully`);
     } catch (error) {
       this.logger.error(`Error registering command "${commandData.name}": ${(error as Error).message}`);
     }

@@ -86,7 +86,7 @@ async function main() {
 
   // Generate and log a Denorite server token
   const serverToken = await authService.createDenoriteToken(360 * 24 * 60 * 60); // 360 days
-  logger.info('Denorite Server Token: ' + serverToken);
+  // logger.info('Denorite Server Token: ' + serverToken);
 
   wsManager.startMinecraftServer(minecraftWsPort);
   wsManager.startPlayerServer(playerWsPort);

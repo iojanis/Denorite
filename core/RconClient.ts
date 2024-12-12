@@ -31,7 +31,7 @@ export class RconClient {
 
     while (!this.authenticated) {
       try {
-        console.log(`Attempting to connect to ${this.host}:${this.port} (attempt ${retryCount + 1})`);
+        // console.log(`Attempting to connect to ${this.host}:${this.port} (attempt ${retryCount + 1})`);
 
         this.conn = await Deno.connect({
           hostname: this.host,
@@ -39,11 +39,11 @@ export class RconClient {
         });
 
         await this.authenticate();
-        console.log("Successfully connected and authenticated");
+        // console.log("Successfully connected and authenticated");
         break;
 
       } catch (error) {
-        console.error(`Connection attempt ${retryCount + 1} failed:`, error.message);
+        // console.error(`Connection attempt ${retryCount + 1} failed:`, error.message);
 
         if (this.conn) {
           try {
@@ -62,7 +62,7 @@ export class RconClient {
           throw new Error(`Failed to connect after ${this.maxRetries} attempts`);
         }
 
-        console.log(`Waiting ${this.retryDelay/1000} seconds before next attempt...`);
+        // console.log(`Waiting ${this.retryDelay/1000} seconds before next attempt...`);
         await new Promise(resolve => setTimeout(resolve, this.retryDelay));
       }
     }
@@ -78,7 +78,7 @@ export class RconClient {
   private async authenticate(): Promise<void> {
     if (!this.conn) throw new Error("Not connected");
 
-    console.log(this.password);
+    // console.log(this.password);
 
     const authPacket = this.createPacket(PACKET_TYPE.AUTH, this.password);
     await this.conn.write(authPacket);

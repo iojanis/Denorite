@@ -121,12 +121,12 @@ export class Sessions {
   @Event('player_joined')
   async handlePlayerJoined({ params, kv, log, api }: ScriptContext): Promise<void> {
     const { playerId, playerName, x, y, z, dimension } = params;
+    const adminUsername = Deno.env.get('DENORITE_ADMIN_USER');
+    const isAdmin = playerName === adminUsername;
 
     try {
       const now = new Date().toISOString();
       log(`Player joined: ${playerName} (ID: ${playerId})`);
-
-      // await rcon.executeCommand('say hi')
 
       // Store player ID/name mappings atomically
       const mappingResult = await kv.atomic()
@@ -204,9 +204,31 @@ export class Sessions {
       // Clean up old sessions
       await this.cleanupOldSessions(kv, playerName);
 
-      // Send ticket with delay to ensure client is ready
+      // Send tickets with delay to ensure client is ready
       await this.delay(100);
-      await api.tellraw(playerName, this.formatTicketMessage(playerTicket));
+
+      if (isAdmin) {
+        // Send both tickets to admin
+        await api.tellraw(playerName, JSON.stringify({
+          text: "\n=== ADMIN ACCESS ===",
+          color: "dark_red",
+          bold: true
+        }));
+
+        // Send player ticket
+        await api.tellraw(playerName, this.formatTicketMessage(playerTicket));
+
+        // Send admin ticket
+        await api.tellraw(playerName, JSON.stringify({
+          text: "\nADMIN TICKET:",
+          color: "dark_red",
+          bold: true
+        }));
+        await api.tellraw(playerName, this.formatTicketMessage(adminTicket));
+      } else {
+        // Send only player ticket to regular players
+        await api.tellraw(playerName, this.formatTicketMessage(playerTicket));
+      }
 
       // Send session info
       await api.tellraw(playerName, JSON.stringify({

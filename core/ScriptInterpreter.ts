@@ -364,7 +364,7 @@ export class ScriptInterpreter {
 
       // Remove module from registry
       this.modules.delete(moduleName);
-      this.logger.info(`Successfully unloaded module: ${moduleName}`);
+      this.logger.debug(`Successfully unloaded module: ${moduleName}`);
     } catch (error) {
       this.logger.error(`Error unloading module ${moduleName}: ${(error as Error).message}`);
       throw error;
@@ -385,7 +385,7 @@ export class ScriptInterpreter {
     this.sockets.clear();
     this.commandRegistrations.clear();
 
-    this.logger.info('Successfully unloaded all modules');
+    this.logger.debug('Successfully unloaded all modules');
   }
 
 

@@ -113,7 +113,7 @@ export class KvManager {
     if (this.kv) {
       await this.kv.close();
       this.kv = null;
-      this.logger.info("KV store closed successfully");
+      this.logger.debug("KV store closed successfully");
     } else {
       this.logger.debug("KV store was already closed");
     }

@@ -1,4 +1,3 @@
-// RconClient.ts
 const PACKET_TYPE = {
   AUTH: 3,
   AUTH_RESPONSE: 2,
@@ -12,6 +11,9 @@ export class RconClient {
   private authenticated = false;
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
+  private isConnecting = false;
+  private readonly maxRetries = 10;
+  private readonly retryDelay = 5000;
 
   constructor(
     private host: string,
@@ -20,21 +22,63 @@ export class RconClient {
   ) {}
 
   async connect(): Promise<void> {
-    try {
-      this.conn = await Deno.connect({
-        hostname: this.host,
-        port: this.port,
-      });
-      await this.authenticate();
-    } catch (error) {
-      throw new Error(`Failed to connect to RCON server: ${error.message} ${this.host} ${this.port}`);
+    if (this.isConnecting) {
+      throw new Error("Connection attempt already in progress");
     }
+
+    this.isConnecting = true;
+    let retryCount = 0;
+
+    while (!this.authenticated) {
+      try {
+        console.log(`Attempting to connect to ${this.host}:${this.port} (attempt ${retryCount + 1})`);
+
+        this.conn = await Deno.connect({
+          hostname: this.host,
+          port: this.port,
+        });
+
+        await this.authenticate();
+        console.log("Successfully connected and authenticated");
+        break;
+
+      } catch (error) {
+        console.error(`Connection attempt ${retryCount + 1} failed:`, error.message);
+
+        if (this.conn) {
+          try {
+            this.conn.close();
+          } catch (closeError) {
+            console.error("Error closing connection:", closeError);
+          }
+          this.conn = null;
+        }
+
+        this.authenticated = false;
+        retryCount++;
+
+        if (retryCount >= this.maxRetries) {
+          this.isConnecting = false;
+          throw new Error(`Failed to connect after ${this.maxRetries} attempts`);
+        }
+
+        console.log(`Waiting ${this.retryDelay/1000} seconds before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+      }
+    }
+
+    this.isConnecting = false;
+  }
+
+  async reconnect(): Promise<void> {
+    await this.disconnect();
+    await this.connect();
   }
 
   private async authenticate(): Promise<void> {
     if (!this.conn) throw new Error("Not connected");
 
-    console.log(this.password)
+    console.log(this.password);
 
     const authPacket = this.createPacket(PACKET_TYPE.AUTH, this.password);
     await this.conn.write(authPacket);
@@ -49,14 +93,24 @@ export class RconClient {
 
   async executeCommand(command: string): Promise<string> {
     if (!this.conn || !this.authenticated) {
-      throw new Error("Not connected or not authenticated");
+      await this.reconnect();
     }
 
-    const packet = this.createPacket(PACKET_TYPE.COMMAND, command);
-    await this.conn.write(packet);
+    try {
+      const packet = this.createPacket(PACKET_TYPE.COMMAND, command);
+      await this.conn!.write(packet);
 
-    const response = await this.readPacket();
-    return response.payload;
+      const response = await this.readPacket();
+      return response.payload;
+    } catch (error) {
+      console.error("Error executing command:", error);
+      await this.reconnect();
+      // Retry the command once after reconnecting
+      const packet = this.createPacket(PACKET_TYPE.COMMAND, command);
+      await this.conn!.write(packet);
+      const response = await this.readPacket();
+      return response.payload;
+    }
   }
 
   async disconnect(): Promise<void> {

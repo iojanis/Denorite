@@ -2115,7 +2115,7 @@ export class Zones {
     }
   }
 
-  @Event("denorite_connected")
+  @Event("server_started")
   async initializeMarkerSets({
     bluemap,
     kv,

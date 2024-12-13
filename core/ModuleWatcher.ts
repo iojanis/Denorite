@@ -164,21 +164,22 @@ export class ModuleWatcher {
               } catch (error) {
                 this.logger.error(`Failed to reload module ${path}: ${error}`);
               }
-            } else if (path.endsWith('.tell')) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-              try {
-                if (event.kind === "modify") {
-                  const content = await Deno.readTextFile(path);
-                  const cleanPath = path.replace(/^\/app\//, '');
-                  await this.registerVueApp(cleanPath, content);
-                } else if (event.kind === "remove") {
-                  // Handle file removal by verifying all apps
-                  await this.verifyApps();
-                }
-              } catch (error) {
-                this.logger.error(`Failed to handle Vue app ${path}: ${error}`);
-              }
             }
+            // else if (path.endsWith('.tell')) {
+            //   await new Promise(resolve => setTimeout(resolve, 100));
+            //   try {
+            //     if (event.kind === "modify") {
+            //       const content = await Deno.readTextFile(path);
+            //       const cleanPath = path.replace(/^\/app\//, '');
+            //       await this.registerVueApp(cleanPath, content);
+            //     } else if (event.kind === "remove") {
+            //       // Handle file removal by verifying all apps
+            //       await this.verifyApps();
+            //     }
+            //   } catch (error) {
+            //     this.logger.error(`Failed to handle Vue app ${path}: ${error}`);
+            //   }
+            // }
           }
         }
       }

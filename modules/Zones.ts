@@ -2115,7 +2115,7 @@ export class Zones {
     }
   }
 
-  @Event("server_started")
+  @Event("player_joined")
   async initializeMarkerSets({
     bluemap,
     kv,

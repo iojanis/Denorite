@@ -1,6 +1,14 @@
-import { Module, Command, Description, Permission, Event, Socket, Argument } from '../decorators.ts';
-import { text, button, container, alert, divider } from '../tellraw-ui.ts';
-import type { ScriptContext } from '../types.ts';
+import {
+  Module,
+  Command,
+  Description,
+  Permission,
+  Event,
+  Socket,
+  Argument,
+} from "../decorators.ts";
+import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import type { ScriptContext } from "../types.ts";
 
 interface ServerConfig {
   name: string;
@@ -17,32 +25,32 @@ interface ServerConfig {
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
-  name: 'Minecraft Server',
-  url: 'http://localhost',
-  version: '1.20.1',
-  description: 'A Minecraft Server',
-  map_url: '',
-  motd: 'Welcome to the server!',
+  name: "Minecraft Server",
+  url: "http://localhost",
+  version: "1.20.1",
+  description: "A Minecraft Server",
+  map_url: "",
+  motd: "Welcome to the server!",
   max_players: 20,
   pvp: true,
   whitelist: false,
   spawn_protection: 16,
-  difficulty: 'normal'
+  difficulty: "normal",
 };
 
 @Module({
-  name: 'Server',
-  version: '1.0.0',
-  description: 'Server management and configuration'
+  name: "Server",
+  version: "1.0.0",
+  description: "Server management and configuration",
 })
 export class Server {
   private async getConfig(kv: any, key: string): Promise<any> {
-    const result = await kv.get(['server', key]);
+    const result = await kv.get(["server", key]);
     return result.value ?? DEFAULT_CONFIG[key as keyof ServerConfig];
   }
 
   private async setConfig(kv: any, key: string, value: any): Promise<void> {
-    await kv.set(['server', key], value);
+    await kv.set(["server", key], value);
   }
 
   private async getAllConfig(kv: any): Promise<Partial<ServerConfig>> {
@@ -53,7 +61,7 @@ export class Server {
     return config;
   }
 
-  @Event('server_started')
+  @Event("server_started")
   async handleServerStart({ kv, log }: ScriptContext): Promise<void> {
     try {
       // Initialize server config if not exists
@@ -63,29 +71,32 @@ export class Server {
           await this.setConfig(kv, key, value);
         }
       }
-      log('Server configuration initialized');
+      log("Server configuration initialized");
     } catch (error) {
       log(`Error initializing server config: ${error.message}`);
     }
   }
 
-  @Command(['server'])
-  @Description('Server management commands')
-  @Permission('player')
-  async serverHelp({ params, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
+  @Command(["server"])
+  @Description("Server management commands")
+  @Permission("player")
+  async serverHelp({
+    params,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 
     const helpMenu = container([
       text("📡 Server Management 📡\n", {
-        style: { color: "gold", styles: ["bold"] }
+        style: { color: "gold", styles: ["bold"] },
       }),
 
       button("/server info", {
         variant: "ghost",
         onClick: {
           action: "run_command",
-          value: "/server info"
-        }
+          value: "/server info",
+        },
       }),
       text(" - View server information\n", { style: { color: "gray" } }),
 
@@ -93,8 +104,8 @@ export class Server {
         variant: "ghost",
         onClick: {
           action: "run_command",
-          value: "/server config list"
-        }
+          value: "/server config list",
+        },
       }),
       text(" - List all configuration values\n", { style: { color: "gray" } }),
 
@@ -102,8 +113,8 @@ export class Server {
         variant: "ghost",
         onClick: {
           action: "suggest_command",
-          value: "/server config set "
-        }
+          value: "/server config set ",
+        },
       }),
       text(" - Set a configuration value\n", { style: { color: "gray" } }),
 
@@ -111,8 +122,8 @@ export class Server {
         variant: "ghost",
         onClick: {
           action: "run_command",
-          value: "/server restart"
-        }
+          value: "/server restart",
+        },
       }),
       text(" - Restart the server\n", { style: { color: "gray" } }),
 
@@ -120,30 +131,42 @@ export class Server {
         variant: "ghost",
         onClick: {
           action: "run_command",
-          value: "/server motd"
-        }
+          value: "/server motd",
+        },
       }),
       text(" - View/edit server MOTD\n", { style: { color: "gray" } }),
 
       divider(),
 
       text("🔧 Operator Commands:\n", { style: { color: "gold" } }),
-      text("• /server config reset - Reset to defaults\n", { style: { color: "gray" } }),
-      text("• /server backup - Create server backup\n", { style: { color: "gray" } }),
-      text("• /server maintenance - Toggle maintenance mode", { style: { color: "gray" } })
+      text("• /server config reset - Reset to defaults\n", {
+        style: { color: "gray" },
+      }),
+      text("• /server backup - Create server backup\n", {
+        style: { color: "gray" },
+      }),
+      text("• /server maintenance - Toggle maintenance mode", {
+        style: { color: "gray" },
+      }),
     ]);
 
     const messages = await tellraw(
       sender,
-      helpMenu.render({ platform: "minecraft", player: sender })
+      helpMenu.render({ platform: "minecraft", player: sender }),
     );
     return { messages };
   }
 
-  @Command(['server', 'info'])
-  @Description('View server information')
-  @Permission('guest')
-  async serverInfo({ params, kv, tellraw, api, playerManager }: ScriptContext): Promise<{ messages: any[] }> {
+  @Command(["server", "info"])
+  @Description("View server information")
+  @Permission("guest")
+  async serverInfo({
+    params,
+    kv,
+    tellraw,
+    api,
+    playerManager,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 
     try {
@@ -153,14 +176,16 @@ export class Server {
 
       const formatUptime = (ms: number): string => {
         const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-        const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        const hours = Math.floor(
+          (ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000),
+        );
         const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
         return `${days}d ${hours}h ${minutes}m`;
       };
 
       const infoDisplay = container([
         text("🖥️ Server Information 🖥️\n", {
-          style: { color: "gold", styles: ["bold"] }
+          style: { color: "gold", styles: ["bold"] },
         }),
 
         text("Name: ", { style: { color: "gray" } }),
@@ -194,30 +219,32 @@ export class Server {
           style: { color: "aqua" },
           onClick: {
             action: "open_url",
-            value: config.url
-          }
+            value: config.url,
+          },
         }),
-        ...(config.map_url ? [
-          text("Map: ", { style: { color: "gray" } }),
-          text(`${config.map_url}\n`, {
-            style: { color: "aqua" },
-            onClick: {
-              action: "open_url",
-              value: config.map_url
-            }
-          })
-        ] : []),
+        ...(config.map_url
+          ? [
+              text("Map: ", { style: { color: "gray" } }),
+              text(`${config.map_url}\n`, {
+                style: { color: "aqua" },
+                onClick: {
+                  action: "open_url",
+                  value: config.map_url,
+                },
+              }),
+            ]
+          : []),
 
         divider(),
 
         text("🎮 Settings\n", { style: { color: "gold" } }),
         text("PvP: ", { style: { color: "gray" } }),
         text(`${config.pvp ? "Enabled" : "Disabled"}\n`, {
-          style: { color: config.pvp ? "green" : "red" }
+          style: { color: config.pvp ? "green" : "red" },
         }),
         text("Whitelist: ", { style: { color: "gray" } }),
         text(`${config.whitelist ? "Enabled" : "Disabled"}\n`, {
-          style: { color: config.whitelist ? "yellow" : "gray" }
+          style: { color: config.whitelist ? "yellow" : "gray" },
         }),
         text("Difficulty: ", { style: { color: "gray" } }),
         text(`${config.difficulty}\n`, { style: { color: "yellow" } }),
@@ -228,52 +255,58 @@ export class Server {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server config list"
-          }
+            value: "/server config list",
+          },
         }),
         text(" "),
         button("Edit MOTD", {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server motd"
-          }
+            value: "/server motd",
+          },
         }),
-        ...(playerManager.hasPermission(sender, "operator") ? [
-          text(" "),
-          button("Restart", {
-            variant: "destructive",
-            onClick: {
-              action: "run_command",
-              value: "/server restart"
-            }
-          })
-        ] : [])
+        ...(playerManager.hasPermission(sender, "operator")
+          ? [
+              text(" "),
+              button("Restart", {
+                variant: "destructive",
+                onClick: {
+                  action: "run_command",
+                  value: "/server restart",
+                },
+              }),
+            ]
+          : []),
       ]);
 
       const messages = await tellraw(
         sender,
-        infoDisplay.render({ platform: "minecraft", player: sender })
+        infoDisplay.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     } catch (error) {
       const errorMsg = alert([], {
         variant: "destructive",
         title: "Error",
-        description: error.message
+        description: error.message,
       });
       const messages = await tellraw(
         sender,
-        errorMsg.render({ platform: "minecraft", player: sender })
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     }
   }
 
-  @Command(['server', 'config', 'list'])
-  @Description('List all server configuration values')
-  @Permission('operator')
-  async listConfig({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
+  @Command(["server", "config", "list"])
+  @Description("List all server configuration values")
+  @Permission("operator")
+  async listConfig({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 
     try {
@@ -281,21 +314,23 @@ export class Server {
 
       const configDisplay = container([
         text("⚙️ Server Configuration ⚙️\n", {
-          style: { color: "gold", styles: ["bold"] }
+          style: { color: "gold", styles: ["bold"] },
         }),
 
-        ...Object.entries(config).map(([key, value]) => [
-          text(`${key}: `, { style: { color: "gray" } }),
-          text(`${value}\n`, { style: { color: "yellow" } }),
-          button("Edit", {
-            variant: "outline",
-            onClick: {
-              action: "suggest_command",
-              value: `/server config set ${key} `
-            }
-          }),
-          text("\n")
-        ]).flat(),
+        ...Object.entries(config)
+          .map(([key, value]) => [
+            text(`${key}: `, { style: { color: "gray" } }),
+            text(`${value}\n`, { style: { color: "yellow" } }),
+            button("Edit", {
+              variant: "outline",
+              onClick: {
+                action: "suggest_command",
+                value: `/server config set ${key} `,
+              },
+            }),
+            text("\n"),
+          ])
+          .flat(),
 
         divider(),
 
@@ -303,46 +338,50 @@ export class Server {
           variant: "destructive",
           onClick: {
             action: "run_command",
-            value: "/server config reset"
-          }
+            value: "/server config reset",
+          },
         }),
         text(" "),
         button("View Info", {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server info"
-          }
-        })
+            value: "/server info",
+          },
+        }),
       ]);
 
       const messages = await tellraw(
         sender,
-        configDisplay.render({ platform: "minecraft", player: sender })
+        configDisplay.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     } catch (error) {
       const errorMsg = alert([], {
         variant: "destructive",
         title: "Error",
-        description: error.message
+        description: error.message,
       });
       const messages = await tellraw(
         sender,
-        errorMsg.render({ platform: "minecraft", player: sender })
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     }
   }
 
-  @Command(['server', 'config', 'set'])
-  @Description('Set a server configuration value')
-  @Permission('operator')
+  @Command(["server", "config", "set"])
+  @Description("Set a server configuration value")
+  @Permission("operator")
   @Argument([
-    { name: 'key', type: 'string', description: 'Configuration key' },
-    { name: 'value', type: 'string', description: 'New value' }
+    { name: "key", type: "string", description: "Configuration key" },
+    { name: "value", type: "string", description: "New value" },
   ])
-  async setConfigValue({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
+  async setConfigValue({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender, args } = params;
 
     try {
@@ -355,17 +394,17 @@ export class Server {
       // Type validation
       let parsedValue: any = value;
       switch (typeof DEFAULT_CONFIG[key as keyof ServerConfig]) {
-        case 'number':
+        case "number":
           parsedValue = Number(value);
           if (isNaN(parsedValue)) {
-            throw new Error('Value must be a number');
+            throw new Error("Value must be a number");
           }
           break;
-        case 'boolean':
-          if (!['true', 'false'].includes(value.toLowerCase())) {
-            throw new Error('Value must be true or false');
+        case "boolean":
+          if (!["true", "false"].includes(value.toLowerCase())) {
+            throw new Error("Value must be true or false");
           }
-          parsedValue = value.toLowerCase() === 'true';
+          parsedValue = value.toLowerCase() === "true";
           break;
       }
 
@@ -373,7 +412,7 @@ export class Server {
 
       const successMsg = container([
         text("✅ Configuration Updated\n", {
-          style: { color: "green", styles: ["bold"] }
+          style: { color: "green", styles: ["bold"] },
         }),
         text(`${key}: `, { style: { color: "gray" } }),
         text(`${parsedValue}\n`, { style: { color: "yellow" } }),
@@ -382,143 +421,340 @@ export class Server {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server config list"
-          }
+            value: "/server config list",
+          },
         }),
         text(" "),
         button("View Server Info", {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server info"
-          }
-        })
+            value: "/server info",
+          },
+        }),
       ]);
 
       const messages = await tellraw(
         sender,
-        successMsg.render({ platform: "minecraft", player: sender })
+        successMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     } catch (error) {
       const errorMsg = alert([], {
         variant: "destructive",
         title: "Config Update Failed",
-        description: error.message
+        description: error.message,
       });
       const messages = await tellraw(
         sender,
-        errorMsg.render({ platform: "minecraft", player: sender })
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     }
   }
 
-  @Command(['server', 'restart'])
-  @Description('Restart the server')
-  @Permission('operator')
-  async restartServer({ params, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+  @Command(["server", "restart"])
+  @Description("Restart the server")
+  @Permission("operator")
+  async restartServer({
+    params,
+    tellraw,
+    api,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 
     try {
       const confirmMsg = container([
         text("⚠️ Server Restart Confirmation ⚠️\n", {
-          style: { color: "red", styles: ["bold"] }
+          style: { color: "red", styles: ["bold"] },
         }),
         text("Are you sure you want to restart the server?\n", {
-          style: { color: "yellow" }
+          style: { color: "yellow" },
         }),
         text("This will disconnect all players!\n", {
-          style: { color: "gray" }
+          style: { color: "gray" },
         }),
         divider(),
         button("Confirm Restart", {
           variant: "destructive",
           onClick: {
             action: "run_command",
-            value: "/server confirm-restart"
-          }
+            value: "/server confirm-restart",
+          },
         }),
         text(" "),
         button("Cancel", {
           variant: "outline",
           onClick: {
             action: "run_command",
-            value: "/server info"
-          }
-        })
+            value: "/server info",
+          },
+        }),
       ]);
 
       const messages = await tellraw(
         sender,
-        confirmMsg.render({ platform: "minecraft", player: sender })
+        confirmMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     } catch (error) {
       const errorMsg = alert([], {
         variant: "destructive",
         title: "Error",
-        description: error.message
+        description: error.message,
       });
       const messages = await tellraw(
         sender,
-        errorMsg.render({ platform: "minecraft", player: sender })
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     }
   }
 
-  @Command(['server', 'confirm-restart'])
-  @Description('Confirm server restart')
-  @Permission('operator')
-  async confirmRestart({ params, tellraw, api }: ScriptContext): Promise<{ messages: any[] }> {
+  @Command(["server", "confirm-restart"])
+  @Description("Confirm server restart")
+  @Permission("operator")
+  async confirmRestart({
+    params,
+    tellraw,
+    api,
+  }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 
     try {
       // Broadcast restart message to all players
-      await api.broadcast({
+      await tellraw("@a", {
         text: "⚠️ SERVER RESTART IN 10 SECONDS ⚠️",
         color: "red",
-        bold: true
+        bold: true,
       });
 
       // Wait 10 seconds
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await new Promise((resolve) => setTimeout(resolve, 10000));
 
       // Execute restart
-      await api.executeCommand('stop');
+      await api.executeCommand("stop");
 
-      const messages = await tellraw(
-        sender,
-        "Server is restarting..."
-      );
+      const messages = await tellraw(sender, "Server is restarting...");
       return { messages };
     } catch (error) {
       const errorMsg = alert([], {
         variant: "destructive",
         title: "Restart Failed",
-        description: error.message
+        description: error.message,
       });
       const messages = await tellraw(
         sender,
-        errorMsg.render({ platform: "minecraft", player: sender })
+        errorMsg.render({ platform: "minecraft", player: sender }),
       );
       return { messages };
     }
   }
 
-  @Socket('get_server_info')
+  @Command(["server", "setup"])
+  @Description("Initialize server with default configuration and apps")
+  @Permission("operator")
+  async setupServer({
+    params,
+    kv,
+    tellraw,
+  }: ScriptContext): Promise<{ messages: any[] }> {
+    const { sender } = params;
+
+    try {
+      // Default apps configuration
+      const defaultApps = [
+        {
+          name: "EnderNET",
+          title: "EnderNET",
+          icon: "items/ender_eye.png",
+          version: "1.0.0",
+          description:
+            "Core network interface for accessing server features and applications",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Bcon",
+          title: "Bcon",
+          icon: "items/beacon.png",
+          version: "1.0.0",
+          description:
+            "Beacon management system for territory control and effects",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "XPay",
+          title: "XPay",
+          icon: "boe.webp",
+          version: "1.0.0",
+          description: "Economic transaction and payment processing system",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Inventory",
+          title: "Inventory",
+          icon: "items/chest.png",
+          version: "1.0.0",
+          description: "Advanced inventory management and organization system",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Market",
+          title: "Market",
+          icon: "items/emerald.png",
+          version: "1.0.0",
+          description: "Global marketplace for trading items and services",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Teams",
+          title: "Teams",
+          icon: "ega.webp",
+          version: "1.0.0",
+          description: "Team management and collaboration platform",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Zones",
+          title: "Zones",
+          icon: "c.webp",
+          version: "1.0.0",
+          description: "Territory and protection zone management system",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "Code",
+          title: "Code",
+          icon: "eip.webp",
+          version: "1.0.0",
+          description:
+            "Advanced scripting and programming interface for operators",
+          permission: "operator",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
+          name: "COU",
+          title: "COU",
+          icon: "items/observer.png",
+          version: "1.0.0",
+          description:
+            "Craft Observation Unit - AI assistant for server and community management",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+      ];
+
+      // Set the apps in KV store
+      await kv.set(["apps"], defaultApps);
+
+      // Initialize default server config
+      for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
+        await this.setConfig(kv, key, value);
+      }
+
+      const successMsg = container([
+        text("✅ Server Setup Complete\n", {
+          style: { color: "green", styles: ["bold"] },
+        }),
+        text("Successfully initialized:\n", { style: { color: "gray" } }),
+        text("• Default server configuration\n", {
+          style: { color: "yellow" },
+        }),
+        text(`• ${defaultApps.length} default applications\n`, {
+          style: { color: "yellow" },
+        }),
+        divider(),
+        button("View Server Info", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: "/server info",
+          },
+        }),
+        text(" "),
+        button("View Config", {
+          variant: "outline",
+          onClick: {
+            action: "run_command",
+            value: "/server config list",
+          },
+        }),
+      ]);
+
+      const messages = await tellraw(
+        sender,
+        successMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    } catch (error) {
+      const errorMsg = alert([], {
+        variant: "destructive",
+        title: "Setup Failed",
+        description: error.message,
+      });
+      const messages = await tellraw(
+        sender,
+        errorMsg.render({ platform: "minecraft", player: sender }),
+      );
+      return { messages };
+    }
+  }
+
+  @Socket("get_server_info")
   async getServerInfo({ kv }: ScriptContext): Promise<any> {
     try {
       const config = await this.getAllConfig(kv);
       return {
         success: true,
-        data: config
+        data: config,
       };
     } catch (error) {
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   }

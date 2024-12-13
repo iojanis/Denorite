@@ -56,40 +56,40 @@ export class ModuleWatcher {
       // Get current apps from KV
       const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
       const validApps: AppRegistration[] = [];
-      const removedApps: AppRegistration[] = [];
+      // const removedApps: AppRegistration[] = [];
 
-      // Check each app's file existence
-      for (const app of apps) {
-        try {
-          await Deno.stat(app.path);
-          validApps.push(app);
-        } catch (error) {
-          if (error instanceof Deno.errors.NotFound) {
-            removedApps.push(app);
-            this.logger.info(`App file not found, removing: ${app.name}`);
-          } else {
-            this.logger.error(`Error checking app file ${app.path}: ${error}`);
-            // Keep app in case of temporary filesystem issues
-            validApps.push(app);
-          }
-        }
-      }
+      // // Check each app's file existence
+      // for (const app of apps) {
+      //   try {
+      //     await Deno.stat(app.path);
+      //     validApps.push(app);
+      //   } catch (error) {
+      //     if (error instanceof Deno.errors.NotFound) {
+      //       removedApps.push(app);
+      //       this.logger.info(`App file not found, removing: ${app.name}`);
+      //     } else {
+      //       this.logger.error(`Error checking app file ${app.path}: ${error}`);
+      //       // Keep app in case of temporary filesystem issues
+      //       validApps.push(app);
+      //     }
+      //   }
+      // }
 
-      // Update KV if any apps were removed
-      if (removedApps.length > 0) {
-        await this.scriptManager.kv.set(['server', 'apps'], validApps);
+      // // Update KV if any apps were removed
+      // if (removedApps.length > 0) {
+      //   await this.scriptManager.kv.set(['server', 'apps'], validApps);
+      //
+      //   // Notify clients about removed apps
+      //   for (const app of removedApps) {
+      //     this.scriptManager.broadcastPlayers({
+      //       type: 'app_removed',
+      //       appName: app.name,
+      //       reason: 'file_not_found'
+      //     });
+      //   }
+      // }
 
-        // Notify clients about removed apps
-        for (const app of removedApps) {
-          this.scriptManager.broadcastPlayers({
-            type: 'app_removed',
-            appName: app.name,
-            reason: 'file_not_found'
-          });
-        }
-      }
-
-      return validApps;
+      return apps;
     } catch (error) {
       this.logger.error(`Error verifying apps: ${error}`);
       return null;

@@ -42,11 +42,11 @@ export function Permission(permission: string) {
       const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
       const sender = params.sender || params.playerName;
 
-      if (!sender) {
+      if (!sender && (permission !== 'guest')) {
         throw new Error('No sender specified for permission check');
       }
 
-      if (!playerManager.hasPermission(sender, permission)) {
+      if (!playerManager.hasPermission(sender, permission) && (permission !== 'guest')) {
         throw new Error(`Insufficient permissions. Required: ${permission}`);
       }
 
@@ -67,7 +67,7 @@ export function Command(commandPath: string[]) {
       const permissionMetadata = getMetadata(context.metadata, `permission:${context.name.toString()}`);
       if (permissionMetadata) {
         const sender = params.sender;
-        if (!playerManager.hasPermission(sender, permissionMetadata)) {
+        if (!playerManager.hasPermission(sender, permissionMetadata) && (permissionMetadata !== 'guest')) {
           throw new Error(`Insufficient permissions. Required: ${permissionMetadata}`);
         }
       }

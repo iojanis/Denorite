@@ -605,7 +605,7 @@ export class ScriptManager {
     if (socket) {
       socket.send(JSON.stringify(data));
     } else {
-      this.logger.error(`No socket found for player ${playerId}`);
+      // this.logger.error(`No socket found for player ${playerId}`);
     }
   }
 

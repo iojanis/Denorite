@@ -1,0 +1,14 @@
+<!-- @app
+{
+  "name": "Teams",
+  "title": "Teams",
+  "icon": "ega.webp",
+  "version": "1.0.0",
+  "description": "This is a self-contained component app",
+  "permission": "player",
+  "singleWindow": false,
+  "isClosable": true,
+  "height": 100,
+  "width": 100
+}
+-->

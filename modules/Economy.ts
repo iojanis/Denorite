@@ -512,4 +512,38 @@ export class Economy {
       return { messages, success: false, error: error.message };
     }
   }
+
+  @Socket('socket_bank_balance')
+  @Permission('player')
+  async getSocketBalance({ params, kv }: ScriptContext): Promise<any> {
+    try {
+      const balance = await this.getBalance(kv, params.playerName);
+      return {
+        success: true,
+        balance
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  @Socket('socket_bank_history')
+  @Permission('player')
+  async getHistory({ params, kv }: ScriptContext): Promise<any> {
+    try {
+      const transactions = await kv.get(['plugins', 'economy', 'transactions', params.playerName]);
+      return {
+        success: true,
+        transactions: transactions.value || []
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }

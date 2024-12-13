@@ -196,10 +196,10 @@ export class ScriptInterpreter {
     }
 
     // Start watching for changes
-    (async () => {
+    await (async () => {
       try {
         while (true) {
-          const { value: entries, done } = await reader.read();
+          const {value: entries, done} = await reader.read();
           if (done) break;
 
           await this.handleWatchUpdate(registration, entries);

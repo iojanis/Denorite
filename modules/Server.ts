@@ -142,7 +142,7 @@ export class Server {
 
   @Command(['server', 'info'])
   @Description('View server information')
-  @Permission('player')
+  @Permission('guest')
   async serverInfo({ params, kv, tellraw, api, playerManager }: ScriptContext): Promise<{ messages: any[] }> {
     const { sender } = params;
 

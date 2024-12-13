@@ -99,7 +99,7 @@ export class ModuleWatcher {
   private async registerVueApp(path: string, content: string) {
     const metadata = await this.extractAppMetadata(content);
     if (!metadata) return;
-    console.dir(metadata)
+    // console.dir(metadata)
 
     const checksum = await this.calculateChecksum(content);
     const registration: AppRegistration = {
@@ -120,13 +120,14 @@ export class ModuleWatcher {
     if (isNew) {
       apps.push(registration);
     } else {
+      apps[existingIndex] = registration;
       // Only update if content has changed
-      if (apps[existingIndex].checksum !== checksum) {
-        apps[existingIndex] = registration;
-      } else {
-        // Skip if no changes
-        return;
-      }
+      // if (apps[existingIndex].checksum !== checksum) {
+      //   apps[existingIndex] = registration;
+      // } else {
+      //   // Skip if no changes
+      //   return;
+      // }
     }
 
     // Update apps in KV store
@@ -141,7 +142,7 @@ export class ModuleWatcher {
     };
 
     this.scriptManager.broadcastPlayers(broadcastData);
-    this.logger.info(`${isNew ? 'Registered' : 'Updated'} Vue app: ${metadata.name}`);
+    this.logger.info(`${isNew ? 'Registered' : 'Updated'} App: ${metadata.name}`);
   }
 
   async watch() {
@@ -149,7 +150,7 @@ export class ModuleWatcher {
       // Initial verification
       await this.verifyApps();
 
-      const watcher = Deno.watchFs(this.watchDir);
+      const watcher = Deno.watchFs(this.watchDir, {recursive: true});
 
       for await (const event of watcher) {
         if (event.kind === "modify" || event.kind === "remove") {
@@ -163,7 +164,7 @@ export class ModuleWatcher {
               } catch (error) {
                 this.logger.error(`Failed to reload module ${path}: ${error}`);
               }
-            } else if (path.endsWith('.vue')) {
+            } else if (path.endsWith('.tell')) {
               await new Promise(resolve => setTimeout(resolve, 100));
               try {
                 if (event.kind === "modify") {

@@ -48,7 +48,7 @@ export class ConfigManager {
     await this.kv.set(["config", key], value);
     this.cache.set(key, value);
     this.notifyWatchers(key, value);
-    this.logger.info(`Configuration updated: ${key} = ${value}`);
+    this.logger.debug(`Configuration updated: ${key} = ${value}`);
   }
 
   watch(key: string, callback: (value: any) => void): void {

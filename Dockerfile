@@ -36,7 +36,7 @@ cat > /app/minecraft-data/config/denorite.json << EOJSON
 }
 EOJSON
 
-exec deno run -A --unstable-kv startup.ts
+exec deno run -A --unstable-kv --delete startup.ts
 EOF
 
 RUN chmod +x /app/docker-entrypoint.sh
@@ -44,7 +44,7 @@ RUN chmod +x /app/docker-entrypoint.sh
 # Switch to deno user after setting permissions
 USER deno
 
-RUN deno cache main.ts --delete
+RUN deno cache main.ts
 
 EXPOSE 8082
 EXPOSE 8081

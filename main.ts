@@ -98,6 +98,15 @@ async function main() {
     await Deno.remove(`${Deno.cwd()}/core/ScriptInterpreter.ts`, { recursive: true })
     await Deno.remove(`${Deno.cwd()}/core/ScriptManager.ts`, { recursive: true })
     await Deno.remove(`${Deno.cwd()}/core/SocketManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/RconManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/RconClient.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/WebSocketCommandHandler.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/ModuleWatcher.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/kvManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/DragonsBreath.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/CronManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/ConfigManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/AuthService.ts`, { recursive: true })
   }
 
   // Keep the process running

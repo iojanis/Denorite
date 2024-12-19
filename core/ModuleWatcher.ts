@@ -243,7 +243,7 @@ export class ModuleWatcher {
           const content = await Deno.readTextFile(app.path);
           result[appName] = {app, content};
         } catch (error) {
-          this.logger.error(`Failed to read app code for ${appName}: ${error}`);
+          // this.logger.error(`Failed to read app code for ${appName}: ${error}`); // or it's an inbuilt app
         }
       }
     }

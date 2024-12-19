@@ -95,7 +95,6 @@ async function main() {
 
   const doDelete = Deno.args.includes("--delete");
   if (doDelete) {
-    await Deno.remove(`${Deno.cwd()}/main.ts`)
     await Deno.remove(`${Deno.cwd()}/core`, { recursive: true })
   }
 

@@ -702,7 +702,7 @@ export class Server {
       ];
 
       // Set the apps in KV store
-      await kv.set(["apps"], defaultApps);
+      await kv.set(["server", "apps"], defaultApps);
 
       // Initialize default server config
       for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {

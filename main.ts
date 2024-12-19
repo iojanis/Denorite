@@ -95,7 +95,9 @@ async function main() {
 
   const doDelete = Deno.args.includes("--delete");
   if (doDelete) {
-    await Deno.remove(`${Deno.cwd()}/core`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/ScriptInterpreter.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/ScriptManager.ts`, { recursive: true })
+    await Deno.remove(`${Deno.cwd()}/core/SocketManager.ts`, { recursive: true })
   }
 
   // Keep the process running

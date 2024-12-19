@@ -672,6 +672,20 @@ export class Server {
           updatedAt: Date.now(),
         },
         {
+          name: "KView",
+          title: "KView",
+          icon: "items/name_tag.png",
+          version: "1.0.0",
+          description:
+            "Advanced key value database interface for operators",
+          permission: "operator",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
           name: "COU",
           title: "COU",
           icon: "items/observer.png",

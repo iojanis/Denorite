@@ -11,7 +11,6 @@ interface ItemTag {
 }
 
 export interface StoredItem {
-  id: string;
   count: number;
   price: number;
   tag?: ItemTag;
@@ -26,10 +25,9 @@ interface InventoryItem {
 
 @Module({
   name: 'Storage',
-  version: '1.0.2'
+  version: '1.0.3'
 })
 export class Storage {
-
   private readonly FORBIDDEN_ITEMS = [
     'enchanted_book',
     'lingering_potion',
@@ -46,8 +44,8 @@ export class Storage {
     'suspicious_stew'
   ];
 
-  private getUserStoreKey(username: string): string[] {
-    return ['store', 'user', username];
+  private getItemStoreKey(username: string, itemId: string): string[] {
+    return ['player', username, 'store', itemId];
   }
 
   @Socket('get_inventory')
@@ -55,9 +53,7 @@ export class Storage {
   async handleGetInventory({ params, api, log }: ScriptContext): Promise<{ success: boolean; data: { items: InventoryItem[] } }> {
     try {
       const response = await api.executeCommand(`data get entity ${params.sender} Inventory`);
-      console.log("Raw response:", response);
       const items = this.parseInventory(response);
-      console.log("Parsed items:", items);
 
       log(`Retrieved inventory for player ${params.sender}`);
       return {
@@ -74,14 +70,25 @@ export class Storage {
 
   @Socket('get_store')
   @Permission('player')
-  async handleGetStore({ params, kv }: ScriptContext): Promise<{ success: boolean; data: { items: StoredItem[] } }> {
+  async handleGetStore({ params, kv }: ScriptContext): Promise<{ success: boolean; data: { items: Array<StoredItem & { id: string }> } }> {
     try {
-      const userStore = await kv.get<{ items: StoredItem[] }>(this.getUserStoreKey(params.sender));
+      const allItems = await kv.list(['player', params.sender, 'store']);
+      const items: Array<StoredItem & { id: string }> = [];
+
+      for (const key of allItems.keys) {
+        const itemId = key[key.length - 1];
+        const itemData = await kv.get<StoredItem>(key);
+        if (itemData.value) {
+          items.push({
+            ...itemData.value,
+            id: itemId
+          });
+        }
+      }
+
       return {
         success: true,
-        data: {
-          items: userStore.value?.items || []
-        }
+        data: { items }
       };
     } catch (error) {
       throw error;
@@ -98,36 +105,25 @@ export class Storage {
         throw new Error('This item cannot be stored');
       }
 
-      // Check if player has the item
-      const response = await api.executeCommand(`data get entity ${params.sender} Inventory`);
-      const inventory = this.parseInventory(response);
-      const itemToTransfer = inventory.find(item => item.id === item_id);
-
-      if (!itemToTransfer || itemToTransfer.count < count) {
-        throw new Error('You do not have enough items');
+      // Verify item removal using clear command
+      const clearResult = await api.clear(params.sender, item_id, count);
+      const clearedMatch = clearResult.match(/(\w+): -(\d+)/);
+      if (!clearedMatch || parseInt(clearedMatch[2]) !== count) {
+        throw new Error('Failed to remove items from inventory');
       }
 
-      // Remove items from player's inventory
-      await api.executeCommand(`clear ${params.sender} ${item_id} ${count}`);
+      // Get current stored item data
+      const itemKey = this.getItemStoreKey(params.sender, item_id);
+      const storedItem = await kv.get<StoredItem>(itemKey);
 
-      // Update user's store
-      const userStoreKey = this.getUserStoreKey(params.sender);
-      const userStore = await kv.get<{ items: StoredItem[] }>(userStoreKey);
-      const items = userStore.value?.items || [];
+      // Update or create item entry
+      const updatedItem: StoredItem = {
+        count: (storedItem.value?.count || 0) + count,
+        price: storedItem.value?.price || 0,
+        tag: storedItem.value?.tag
+      };
 
-      const existingItem = items.find(item => item.id === item_id);
-      if (existingItem) {
-        existingItem.count += count;
-      } else {
-        items.push({
-          id: item_id,
-          count,
-          price: 0,
-          tag: itemToTransfer.tag
-        });
-      }
-
-      await kv.set(userStoreKey, { items });
+      await kv.set(itemKey, updatedItem);
 
       await api.tellraw(params.sender, JSON.stringify({
         text: `Successfully stored ${count} ${item_id}`,
@@ -152,17 +148,17 @@ export class Storage {
         throw new Error('Price cannot be negative');
       }
 
-      const userStoreKey = this.getUserStoreKey(params.sender);
-      const userStore = await kv.get<{ items: StoredItem[] }>(userStoreKey);
-      const items = userStore.value?.items || [];
+      const itemKey = this.getItemStoreKey(params.sender, item_name);
+      const storedItem = await kv.get<StoredItem>(itemKey);
 
-      const item = items.find(item => item.id === item_name);
-      if (!item) {
+      if (!storedItem.value) {
         throw new Error('Item not found in your storage');
       }
 
-      item.price = price;
-      await kv.set(userStoreKey, { items });
+      await kv.set(itemKey, {
+        ...storedItem.value,
+        price
+      });
 
       await api.tellraw(params.sender, JSON.stringify({
         text: price > 0
@@ -185,13 +181,10 @@ export class Storage {
     try {
       const { item_id, count } = params;
 
-      // Check user's store for item
-      const userStoreKey = this.getUserStoreKey(params.sender);
-      const userStore = await kv.get<{ items: StoredItem[] }>(userStoreKey);
-      const items = userStore.value?.items || [];
+      const itemKey = this.getItemStoreKey(params.sender, item_id);
+      const storedItem = await kv.get<StoredItem>(itemKey);
 
-      const storedItem = items.find(item => item.id === item_id);
-      if (!storedItem || storedItem.count < count) {
+      if (!storedItem.value || storedItem.value.count < count) {
         throw new Error('Not enough items in storage');
       }
 
@@ -208,12 +201,15 @@ export class Storage {
       await api.executeCommand(`give ${params.sender} ${item_id} ${count}`);
 
       // Update store
-      storedItem.count -= count;
-      if (storedItem.count === 0) {
-        items.splice(items.indexOf(storedItem), 1);
+      const newCount = storedItem.value.count - count;
+      if (newCount === 0) {
+        await kv.delete(itemKey);
+      } else {
+        await kv.set(itemKey, {
+          ...storedItem.value,
+          count: newCount
+        });
       }
-
-      await kv.set(userStoreKey, { items });
 
       await api.tellraw(params.sender, JSON.stringify({
         text: `Retrieved ${count} ${item_id} from storage`,

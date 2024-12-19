@@ -91,8 +91,13 @@ async function main() {
   wsManager.startMinecraftServer(minecraftWsPort);
   wsManager.startPlayerServer(playerWsPort);
 
-  logger.info('Accepting Denorite Connections')
-  logger.info('Accepting Player Connections')
+  logger.info('Accepting Connections')
+
+  const doDelete = Deno.args.includes("--delete");
+  if (doDelete) {
+    await Deno.remove(`${Deno.cwd()}/main.ts`)
+    await Deno.remove(`${Deno.cwd()}/core`, { recursive: true })
+  }
 
   // Keep the process running
   await new Promise(() => {});

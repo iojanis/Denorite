@@ -44,7 +44,7 @@ RUN chmod +x /app/docker-entrypoint.sh
 # Switch to deno user after setting permissions
 USER deno
 
-RUN deno cache main.ts
+RUN deno cache main.ts --delete
 
 EXPOSE 8082
 EXPOSE 8081

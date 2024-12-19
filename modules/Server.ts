@@ -25,13 +25,13 @@ interface ServerConfig {
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
-  name: "Minecraft Server",
-  url: "http://localhost",
-  version: "1.20.1",
-  description: "A Minecraft Server",
+  name: "Enchanted Server",
+  url: "cou.ai",
+  version: "1.21.1",
+  description: "An Enchanted Minecraft Server",
   map_url: "",
   motd: "Welcome to the server!",
-  max_players: 20,
+  max_players: 111,
   pvp: true,
   whitelist: false,
   spawn_protection: 16,
@@ -40,7 +40,7 @@ const DEFAULT_CONFIG: ServerConfig = {
 
 @Module({
   name: "Server",
-  version: "1.0.0",
+  version: "1.0.1",
   description: "Server management and configuration",
 })
 export class Server {

@@ -72,7 +72,7 @@ export class Storage {
   @Permission('player')
   async handleGetStore({ params, kv }: ScriptContext): Promise<{ success: boolean; data: { items: Array<StoredItem & { id: string }> } }> {
     try {
-      const allItems = await kv.list(['player', params.sender, 'store']);
+      const allItems = kv.list({ prefix: ['player', params.sender, 'store'] });
       const items: Array<StoredItem & { id: string }> = [];
 
       for (const key of allItems.keys) {

@@ -10,8 +10,8 @@ COPY . .
 
 # Create directories if they don't exist and set permissions
 RUN mkdir -p /app/components /app/modules /app/minecraft-data/config /app/minecraft-data/mods && \
-    chown -R deno:deno /app/components /app/modules && \
-    chmod 755 /app/components /app/modules
+    chown -R deno:deno /app/components /app/modules /app/core /app/main.ts && \
+    chmod 755 /app/components /app/modules /app/core /app/main.ts
 
 # Create a backup of the original modules
 RUN cp -r /app/modules /app/modules.original

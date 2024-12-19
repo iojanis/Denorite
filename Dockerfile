@@ -36,7 +36,7 @@ cat > /app/minecraft-data/config/denorite.json << EOJSON
 }
 EOJSON
 
-exec deno run -A --unstable-kv --delete startup.ts
+exec deno run -A --unstable-kv -- --delete startup.ts
 EOF
 
 RUN chmod +x /app/docker-entrypoint.sh

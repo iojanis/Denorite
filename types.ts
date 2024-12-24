@@ -3,6 +3,7 @@ import {AuthService} from "./core/AuthService.ts";
 
 import { PlayerManager } from "./core/PlayerManager.ts";
 import {RconClient} from "./core/RconClient.ts";
+import { TellrawJSON } from "./tellraw-ui.ts";
 
 interface TellrawComponent {
   text: string;

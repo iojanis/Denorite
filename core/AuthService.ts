@@ -27,7 +27,7 @@ export class AuthService {
     this.denoriteSecret = denoriteSecret;
   }
 
-  async createToken(payload: { [key: string]: any }, expiresIn: number = 360000): Promise<string> {
+  async createToken(payload: { [key: string]: any }, expiresIn: number = 360 * 24 * 60 * 60): Promise<string> {
     const header: Header = { alg: "HS256", typ: "JWT" };
     const nowInSeconds = Math.floor(Date.now() / 1000);
     const expirationTime = nowInSeconds + expiresIn;

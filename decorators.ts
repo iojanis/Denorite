@@ -4,8 +4,6 @@
 import { PlayerManager } from "./core/PlayerManager.ts";
 import type { RateLimiter } from "./core/RateLimiter.ts";
 
-// ... (existing metadata handling code from decorators.ts remains the same)
-
 export function Online(location: 'game' | 'web' | 'both' = 'both') {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     setMetadata(context.metadata, `online:${context.name.toString()}`, location);
@@ -76,7 +74,7 @@ export function Command(commandPath: string[]) {
     };
   };
 }
-// Helper function to store metadata
+
 function setMetadata(target: any, key: string, value: any) {
   if (!target[metadataSymbol]) {
     target[metadataSymbol] = new Map();
@@ -219,7 +217,7 @@ export function Limit(limit: string) {
 }
 
 export interface WatchConfig {
-  keys: string[][];      // Array of key paths to watch
+  keys: string[][];      // Array of kv key paths to watch
   debounce?: number;     // Optional debounce time in ms
   initial?: boolean;     // Whether to trigger on initial load
 }

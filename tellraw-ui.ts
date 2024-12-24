@@ -91,6 +91,11 @@ interface Environment {
   height?: number;
 }
 
+const DEFAULT_ENV: Environment = {
+  platform: 'minecraft'
+};
+
+
 interface BaseProps {
   id?: string;
   className?: string;
@@ -135,7 +140,7 @@ class Form implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       // Properly render each field with spacing
       const renderedFields = this.fields.map(field => {
@@ -201,7 +206,7 @@ class RadioGroup implements FormField {
     return true;
   }
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const extra: TellrawJSON[] = [];
 
@@ -273,7 +278,7 @@ class CheckboxField implements FormField {
     return true;
   }
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const isChecked = this.defaultValue;
       const isDisabled = this.props.disabled;
@@ -338,7 +343,7 @@ class SwitchField implements FormField {
     return true;
   }
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const isEnabled = this.defaultValue;
       const isDisabled = this.props.disabled;
@@ -387,7 +392,7 @@ class Text implements UIComponent {
     private props: BaseProps = {}
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { style, tooltip, onClick } = this.props;
     return {
       text: this.content,
@@ -421,7 +426,7 @@ class Alert implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { variant = 'default', title, description } = this.props;
     const colors: Record<string, Color> = {
       default: 'blue',
@@ -462,7 +467,7 @@ class Badge implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { variant = 'default' } = this.props;
     const colors: Record<string, Color> = {
       default: 'blue',
@@ -492,7 +497,7 @@ class Button implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { variant = 'default', loading, disabled } = this.props;
     const colors: Record<ButtonVariant, Color> = {
       default: 'aqua',
@@ -549,7 +554,7 @@ class Container implements UIComponent {
     } = {}
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       return {
         text: '',
@@ -577,7 +582,7 @@ class Grid implements UIComponent {
     } = {}
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const { columns = 2 } = this.props;
       const rows: TellrawJSON[] = [];
@@ -632,7 +637,7 @@ class Tabs implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const { defaultValue } = this.props;
       const activeTab = this.tabs.find(t => t.label === defaultValue) || this.tabs[0];
@@ -690,7 +695,7 @@ class Divider implements UIComponent {
     } = {}
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { orientation = 'horizontal', variant = 'solid' } = this.props;
 
     if (env.platform === 'minecraft') {
@@ -741,7 +746,7 @@ class TextField implements FormField {
     return true;
   }
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       return {
         text: this.props.placeholder || `Enter ${this.name}`,
@@ -792,7 +797,7 @@ class SelectField implements FormField {
     return true;
   }
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       const selectedOption = this.options.find(opt => opt.value === this.defaultValue);
       return {
@@ -830,7 +835,7 @@ class Tooltip implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const triggerComponent = this.props.trigger.render(env);
 
     if (env.platform === 'minecraft') {
@@ -869,7 +874,7 @@ class Toast implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { title, description, variant = 'default' } = this.props;
     const colors: Record<string, Color> = {
       default: 'blue',
@@ -907,7 +912,7 @@ class ScrollArea implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     if (env.platform === 'minecraft') {
       return {
         text: '',
@@ -941,7 +946,7 @@ class Dialog implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON | string {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON | string {
     const { title, description } = this.props;
 
     if (env.platform === 'minecraft') {
@@ -974,7 +979,7 @@ class Progress implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON {
     const { value, max = 100, showLabel } = this.props;
     const percentage = Math.round((value / max) * 100);
 
@@ -1011,7 +1016,7 @@ class Sheet implements UIComponent {
     }
   ) {}
 
-  render(env: Environment): TellrawJSON | string {
+  render(env: Environment = DEFAULT_ENV): TellrawJSON | string {
     const { side = 'right' } = this.props;
 
     if (env.platform === 'minecraft') {

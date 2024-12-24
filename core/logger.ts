@@ -11,7 +11,7 @@ export class Logger {
   private logLevel: LogLevel;
 
   constructor() {
-    this.logLevel = LogLevel.INFO; // Default log level
+    this.logLevel = LogLevel.DEBUG; // Default log level
   }
 
   private log(level: LogLevel, message: string, ...args: unknown[]) {

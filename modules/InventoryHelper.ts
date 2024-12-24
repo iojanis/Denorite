@@ -72,12 +72,16 @@ export class Storage {
   @Permission('player')
   async handleGetStore({ params, kv }: ScriptContext): Promise<{ success: boolean; data: { items: Array<StoredItem & { id: string }> } }> {
     try {
-      const allItems = kv.list({ prefix: ['player', params.sender, 'store'] });
+      // Get iterator for all items with the prefix
+      const iterator = kv.list({ prefix: ['player', params.sender, 'store'] });
       const items: Array<StoredItem & { id: string }> = [];
 
-      for (const key of allItems.keys) {
+      // Iterate through all entries
+      for await (const entry of iterator) {
+        const key = entry.key;
         const itemId = key[key.length - 1];
         const itemData = await kv.get<StoredItem>(key);
+
         if (itemData.value) {
           items.push({
             ...itemData.value,
@@ -107,8 +111,10 @@ export class Storage {
 
       // Verify item removal using clear command
       const clearResult = await api.clear(params.sender, item_id, count);
-      const clearedMatch = clearResult.match(/(\w+): -(\d+)/);
-      if (!clearedMatch || parseInt(clearedMatch[2]) !== count) {
+
+      const clearedMatch = clearResult.match(/Removed (\d+) item\(s\) from player (\w+)/);
+
+      if (!clearedMatch || parseInt(clearedMatch[1]) !== count) {
         throw new Error('Failed to remove items from inventory');
       }
 

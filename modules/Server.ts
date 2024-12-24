@@ -658,6 +658,20 @@ export class Server {
           updatedAt: Date.now(),
         },
         {
+          name: "Library",
+          title: "Library",
+          icon: "eb.webp",
+          version: "1.0.0",
+          description:
+            "Library for publishing and buying books",
+          permission: "player",
+          singleWindow: false,
+          isClosable: true,
+          height: 100,
+          width: 100,
+          updatedAt: Date.now(),
+        },
+        {
           name: "Code",
           title: "Code",
           icon: "eip.webp",
@@ -673,7 +687,7 @@ export class Server {
         },
         {
           name: "KView",
-          title: "KView",
+          title: "KeyView",
           icon: "items/name_tag.png",
           version: "1.0.0",
           description:

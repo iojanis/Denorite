@@ -296,8 +296,10 @@ export class Sessions {
   }
 
   @Socket('ticket_module')
-  async ticketLogin({ params, kv, auth, log }: ScriptContext): Promise<void> {
+  async ticketLogin({ params, kv, auth, log }: ScriptContext): Promise<{ token: any }> {
     const { ticket, socket } = params;
+
+    console.log(params)
 
     try {
       if (!ticket || !socket?.id) {
@@ -309,16 +311,23 @@ export class Sessions {
       const adminTicketData = await kv.get(['tickets', 'admin']);
       const playerTicketData = await kv.get(['tickets', 'player', ticket]);
 
+      console.log(adminTicketData)
+      console.log(playerTicketData)
+
       const isAdmin = adminTicketData.value?.ticket === ticket;
       const ticketData = isAdmin ? adminTicketData.value : playerTicketData.value;
 
+      console.log(isAdmin)
+      console.log(ticketData)
+
       if (!ticketData || new Date(ticketData.expiryTime) < now) {
+        console.log('Ticket expired or invalid')
         socket.send(JSON.stringify({
-          type: 'authenticated',
+          type: 'auth_failed',
           success: false,
           message: 'Ticket expired or invalid'
         }));
-        return;
+        return {token: null};
       }
 
       if (isAdmin) {
@@ -327,7 +336,7 @@ export class Sessions {
           type: 'admin_validated',
           message: 'Please provide player ticket for operator access'
         }));
-        return;
+        return {token: null};
       }
 
       const isPendingAdmin = await kv.get(['tickets', 'pending_admin_socket', socket.id]);
@@ -372,9 +381,12 @@ export class Sessions {
         success: true,
         token,
         user: { username: playerName, role, permissionLevel },
-        message: `Authenticated as ${playerName} (${role})`
+        message: `Authenticated as ${role}`
       }));
 
+      return {
+        token
+      }
     } catch (error) {
       log(`Error in ticketLogin: ${error.message}`);
       log(`Stack: ${error.stack}`);

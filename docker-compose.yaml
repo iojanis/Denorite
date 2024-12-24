@@ -5,6 +5,7 @@ services:
     command: --sqlite-path /data/denokv.sqlite serve --access-token ${DENO_KV_ACCESS_TOKEN}
     volumes:
       - kv-data:/data
+    restart: always
     expose:
       - 4512
     deploy:
@@ -19,6 +20,7 @@ services:
   server:
     container_name: denorite-srv
     build: .
+    restart: always
     expose:
       - 8082
       - 8081
@@ -51,6 +53,7 @@ services:
   mc:
     container_name: minecraft-server
     image: itzg/minecraft-server
+    restart: always
     ports:
       - '${PORT}:25565'
       - '24454:24454/udp'
@@ -108,6 +111,7 @@ services:
   bluemap-web:
     container_name: bluemap-web
     image: nginxinc/nginx-unprivileged:alpine
+    restart: always
     ports:
       - "8100:8080"
     volumes:

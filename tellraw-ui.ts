@@ -398,6 +398,10 @@ class Text implements UIComponent {
       text: this.content,
       ...(style?.color && { color: style.color }),
       ...(style?.styles?.includes('bold') && { bold: true }),
+      ...(style?.styles?.includes('obfuscated') && { obfuscated: true }),
+      ...(style?.styles?.includes('italic') && { italic: true }),
+      ...(style?.styles?.includes('strikethrough') && { strikethrough: true }),
+      ...(style?.styles?.includes('underline') && { underline: true }),
       ...(tooltip && {
         hoverEvent: {
           action: 'show_text',

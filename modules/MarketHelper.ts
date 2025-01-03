@@ -1,6 +1,7 @@
-import { Module, Socket, Permission, Event } from "../decorators.ts";
-import { ScriptContext } from "../types.ts";
-import { StoredItem } from "./InventoryHelper.ts";
+import { Module, Socket, Permission, Event } from '../decorators.ts';
+import { ScriptContext } from '../types.ts';
+import { StoredItem } from './InventoryHelper.ts';
+import { text, button, container, alert, divider } from '../tellraw-ui.ts';
 
 interface ItemTag {
   Damage?: number;
@@ -11,249 +12,253 @@ interface ItemTag {
   [key: string]: any;
 }
 
-interface StoreItem {
+interface MarketListing {
   id: string;
   values: Array<{
-    username: string;
+    seller: string;
     count: number;
     price: number;
     tag?: ItemTag;
   }>;
 }
 
+interface Transaction {
+  timestamp: string;
+  type: 'market_buy' | 'market_sell';
+  amount: number;
+  balance: number;
+  description: string;
+}
+
 @Module({
-  name: "Market",
-  version: "1.0.2",
+  name: 'Market',
+  version: '1.0.3'
 })
 export class Market {
-  private readonly USER_STORE_PREFIX = "store:user:";
-
-  private getUserStoreKey(username: string): string[] {
-    return [this.USER_STORE_PREFIX + username];
+  private async getBalance(kv: any, player: string): Promise<number> {
+    const record = await kv.get(['plugins', 'economy', 'balances', player]);
+    return record.value ? Number(record.value) : 0;
   }
 
-  @Socket("get_market")
-  @Permission("player")
-  async handleGetMarket({ kv }: ScriptContext): Promise<{
-    success: boolean;
-    data: { listings: MarketListing[] };
-  }> {
-    try {
-      const itemMap = new Map<string, MarketListing>();
-
-      // Iterate through all user stores
-      for await (const entry of kv.list({ prefix: ["store", "user"] })) {
-        const username = entry.key[2]; // ['store', 'user', 'username']
-        const store = await kv.get<{ items: StoredItem[] }>(entry.key);
-
-        if (store.value?.items) {
-          // Process each item in the user's store
-          for (const item of store.value.items) {
-            if (item.price > 0 && item.count > 0) {
-              // Get or create the market listing for this item
-              let listing = itemMap.get(item.id);
-              if (!listing) {
-                listing = {
-                  id: item.id,
-                  values: [],
-                };
-                itemMap.set(item.id, listing);
-              }
-
-              // Add this seller's offering
-              listing.values.push({
-                seller: username,
-                count: item.count,
-                price: item.price,
-                tag: item.tag,
-              });
-            }
-          }
-        }
-      }
-
-      // Convert map to array and sort by item ID
-      const listings = Array.from(itemMap.values()).sort((a, b) =>
-        a.id.localeCompare(b.id),
-      );
-
-      return {
-        success: true,
-        data: { listings },
-      };
-    } catch (error) {
-      console.error("Market listing error:", error);
-      throw error;
-    }
-  }
-
-  @Socket("buy_item")
-  @Permission("player")
-  async handleBuyItem({
-    params,
-    kv,
-    api,
-    tellraw,
-    log,
-  }: ScriptContext): Promise<{ success: boolean }> {
-    try {
-      const { item_id, seller_username, amount } = params;
-
-      if (params.sender === seller_username) {
-        throw new Error("You cannot buy your own items");
-      }
-
-      // Get seller's store
-      const sellerStore = await kv.get<{ items: StoredItem[] }>([
-        "store",
-        "user",
-        seller_username,
-      ]);
-      const sellerItems = sellerStore.value?.items || [];
-
-      const sellerItem = sellerItems.find((item) => item.id === item_id);
-      if (!sellerItem) {
-        throw new Error("Item not found in seller's storage");
-      }
-
-      if (sellerItem.count < amount) {
-        throw new Error("Seller does not have enough items");
-      }
-
-      if (!sellerItem.price || sellerItem.price <= 0) {
-        throw new Error("Item is not for sale");
-      }
-
-      const totalCost = BigInt(Math.floor(sellerItem.price * amount));
-
-      // Check buyer's XP balance
-      const buyerBalanceResult = await kv.get<Deno.KvU64>([
-        "plugins",
-        "economy",
-        "balances",
-        params.sender,
-      ]);
-      const buyerBalance = buyerBalanceResult.value?.value || BigInt(0);
-
-      if (buyerBalance < totalCost) {
-        throw new Error(`Insufficient XP levels. Need ${totalCost} XPL`);
-      }
-
-      // Get buyer's store
-      const buyerStore = await kv.get<{ items: StoredItem[] }>([
-        "store",
-        "user",
-        params.sender,
-      ]);
-      const buyerItems = buyerStore.value?.items || [];
-
-      // Find or create buyer's item entry
-      let buyerItem = buyerItems.find((item) => item.id === item_id);
-      if (buyerItem) {
-        buyerItem.count += amount;
-      } else {
-        buyerItem = {
-          id: item_id,
-          count: amount,
-          price: 0,
-          tag: sellerItem.tag,
-        };
-        buyerItems.push(buyerItem);
-      }
-
-      // Update seller's items
-      const updatedSellerItems = sellerItems
-        .map((item) => {
-          if (item.id === item_id) {
-            return { ...item, count: item.count - amount };
-          }
-          return item;
-        })
-        .filter((item) => item.count > 0);
-
-      const sellerBalanceResult = await kv.get<Deno.KvU64>([
-        "plugins",
-        "economy",
-        "balances",
-        seller_username,
-      ]);
-      const sellerBalance = sellerBalanceResult.value?.value || BigInt(0);
-
-      // Update balances and inventories atomically
-      const result = await kv
-        .atomic()
-        // Update XP balances
-        .set(
-          ["plugins", "economy", "balances", params.sender],
-          new Deno.KvU64(buyerBalance - totalCost),
-        )
-        .set(
-          ["plugins", "economy", "balances", seller_username],
-          new Deno.KvU64(sellerBalance + totalCost),
-        )
-        // Update stores
-        .set(["store", "user", seller_username], { items: updatedSellerItems })
-        .set(["store", "user", params.sender], { items: buyerItems })
-        .commit();
-
-      if (!result.ok) {
-        throw new Error("Transaction failed. Please try again");
-      }
-
-      // Record transactions
-      await this.addTransaction(kv, params.sender, {
-        timestamp: new Date().toISOString(),
-        type: "market_buy",
-        amount: Number(-totalCost),
-        balance: Number(buyerBalance - totalCost),
-        description: `Bought ${amount} ${item_id} from ${seller_username}`,
-      });
-
-      await this.addTransaction(kv, seller_username, {
-        timestamp: new Date().toISOString(),
-        type: "market_sell",
-        amount: Number(totalCost),
-        balance: Number(sellerBalance + totalCost),
-        description: `Sold ${amount} ${item_id} to ${params.sender}`,
-      });
-
-      // Notify both parties
-      await tellraw(
-        params.sender,
-        JSON.stringify({
-          text: `Bought ${amount} ${item_id} from ${seller_username} for ${Number(totalCost)} XPL`,
-          color: "green",
-        }),
-      );
-
-      await tellraw(
-        seller_username,
-        JSON.stringify({
-          text: `${params.sender} bought ${amount} ${item_id} for ${Number(totalCost)} XPL`,
-          color: "green",
-        }),
-      );
-
-      log(
-        `Player ${params.sender} bought ${amount} ${item_id} from ${seller_username} for ${Number(totalCost)} XPL`,
-      );
-      return { success: true };
-    } catch (error) {
-      log(`Error buying item: ${error.message}`);
-      throw error;
-    }
-  }
-
-  private async addTransaction(
-    kv: any,
-    player: string,
-    transaction: Transaction,
-  ): Promise<void> {
-    const key = ["plugins", "economy", "transactions", player];
+  private async addTransaction(kv: any, player: string, transaction: Transaction): Promise<void> {
+    const key = ['plugins', 'economy', 'transactions', player];
     const existing = await kv.get(key);
     const transactions = existing.value || [];
     transactions.unshift(transaction);
     if (transactions.length > 50) transactions.length = 50;
     await kv.set(key, transactions);
+  }
+
+  private renderCurrency(amount: number, showSign: boolean = true): UIComponent {
+    const prefix = showSign ? (amount >= 0 ? '+' : '') : '';
+    return text(`${prefix}${amount} XPL`, {
+      style: { color: amount >= 0 ? 'green' : 'red', styles: ['bold'] }
+    });
+  }
+
+  private getItemStoreKey(username: string, itemId: string): string[] {
+    return ['player', username, 'store', itemId];
+  }
+
+  @Socket('get_market')
+  @Permission('player')
+  async handleGetMarket({ kv, log }: ScriptContext): Promise<{
+    success: boolean;
+    data: { listings: MarketListing[] };
+  }> {
+    try {
+      const itemMap = new Map<string, MarketListing>();
+      const iterator = kv.list({ prefix: ['player'] });
+
+      for await (const entry of iterator) {
+        const key = entry.key;
+        if (key[2] === 'store') {
+          const username = key[1];
+          const itemId = key[3];
+          const itemData = await kv.get<StoredItem>(key);
+
+          if (itemData.value && itemData.value.price > 0 && itemData.value.count > 0) {
+            let listing = itemMap.get(itemId);
+            if (!listing) {
+              listing = {
+                id: itemId,
+                values: []
+              };
+              itemMap.set(itemId, listing);
+            }
+
+            listing.values.push({
+              seller: username,
+              count: itemData.value.count,
+              price: itemData.value.price,
+              tag: itemData.value.tag
+            });
+          }
+        }
+      }
+
+      const listings = Array.from(itemMap.values()).sort((a, b) =>
+        a.id.localeCompare(b.id)
+      );
+
+      return {
+        success: true,
+        data: { listings }
+      };
+    } catch (error) {
+      log(`Error getting market listings: ${error.message}`);
+      throw error;
+    }
+  }
+
+  @Socket('buy_item')
+  @Permission('player')
+  async handleBuyItem({
+                        params,
+                        kv,
+                        tellraw,
+                        log
+                      }: ScriptContext): Promise<{ success: boolean }> {
+    try {
+      const { item_id, amount, seller_username } = params;
+
+      if (params.sender === seller_username) {
+        throw new Error('You cannot buy your own items');
+      }
+
+      // Get seller's item
+      const sellerItemKey = this.getItemStoreKey(seller_username, item_id);
+      const sellerItem = await kv.get<StoredItem>(sellerItemKey);
+
+      if (!sellerItem.value) {
+        throw new Error('Item not found in seller\'s storage');
+      }
+
+      if (sellerItem.value.count < amount) {
+        throw new Error('Seller does not have enough items');
+      }
+
+      if (!sellerItem.value.price || sellerItem.value.price <= 0) {
+        throw new Error('Item is not for sale');
+      }
+
+      const totalCost = BigInt(Math.floor(sellerItem.value.price * amount));
+
+      // Check buyer's balance
+      const buyerBalance = await this.getBalance(kv, params.sender);
+      if (BigInt(buyerBalance) < totalCost) {
+        throw new Error(`Insufficient XP levels. Need ${totalCost} XPL`);
+      }
+
+      // Get buyer's item storage
+      const buyerItemKey = this.getItemStoreKey(params.sender, item_id);
+      const buyerItem = await kv.get<StoredItem>(buyerItemKey);
+
+      // Prepare buyer's updated item
+      const updatedBuyerItem: StoredItem = {
+        count: (buyerItem.value?.count || 0) + amount,
+        price: 0,
+        tag: sellerItem.value.tag
+      };
+
+      // Get seller's balance
+      const sellerBalance = await this.getBalance(kv, seller_username);
+
+      // Update everything atomically
+      const result = await kv.atomic()
+        // Update balances
+        .set(
+          ['plugins', 'economy', 'balances', params.sender],
+          new Deno.KvU64(BigInt(buyerBalance) - totalCost)
+        )
+        .set(
+          ['plugins', 'economy', 'balances', seller_username],
+          new Deno.KvU64(BigInt(sellerBalance) + totalCost)
+        )
+        // Update buyer's storage
+        .set(buyerItemKey, updatedBuyerItem)
+        // Update seller's storage
+        .check(sellerItemKey, sellerItem)
+        .set(sellerItemKey, {
+          ...sellerItem.value,
+          count: sellerItem.value.count - amount
+        })
+        .commit();
+
+      if (!result.ok) {
+        throw new Error('Transaction failed. Please try again');
+      }
+
+      // Record transactions
+      await this.addTransaction(kv, params.sender, {
+        timestamp: new Date().toISOString(),
+        type: 'market_buy',
+        amount: -Number(totalCost),
+        balance: Number(buyerBalance) - Number(totalCost),
+        description: `Bought ${amount} ${item_id} from ${seller_username}`
+      });
+
+      await this.addTransaction(kv, seller_username, {
+        timestamp: new Date().toISOString(),
+        type: 'market_sell',
+        amount: Number(totalCost),
+        balance: Number(sellerBalance) + Number(totalCost),
+        description: `Sold ${amount} ${item_id} to ${params.sender}`
+      });
+
+      // Notify buyer
+      const buyerMessage = container([
+        text('Purchase Successful!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('Item: ', { style: { color: 'gray' } }),
+        text(item_id, { style: { color: 'yellow' } }),
+        text('\nAmount: ', { style: { color: 'gray' } }),
+        text(`${amount}`, { style: { color: 'yellow' } }),
+        text('\nCost: ', { style: { color: 'gray' } }),
+        this.renderCurrency(-Number(totalCost)),
+        text('\nSeller: ', { style: { color: 'gray' } }),
+        text(seller_username, { style: { color: 'yellow' } }),
+        text('\nNew Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(Number(buyerBalance) - Number(totalCost), false)
+      ]);
+
+      // Notify seller
+      const sellerMessage = container([
+        text('Sale Complete!\n', { style: { color: 'green', styles: ['bold'] } }),
+        text('Item: ', { style: { color: 'gray' } }),
+        text(item_id, { style: { color: 'yellow' } }),
+        text('\nAmount: ', { style: { color: 'gray' } }),
+        text(`${amount}`, { style: { color: 'yellow' } }),
+        text('\nReceived: ', { style: { color: 'gray' } }),
+        this.renderCurrency(Number(totalCost)),
+        text('\nBuyer: ', { style: { color: 'gray' } }),
+        text(params.sender, { style: { color: 'yellow' } }),
+        text('\nNew Balance: ', { style: { color: 'gray' } }),
+        this.renderCurrency(Number(sellerBalance) + Number(totalCost), false)
+      ]);
+
+      // Send messages to both parties
+      const buyerMessages = await tellraw(
+        params.sender,
+        buyerMessage.render({ platform: 'minecraft', player: params.sender })
+      );
+
+      const sellerMessages = await tellraw(
+        seller_username,
+        sellerMessage.render({ platform: 'minecraft', player: seller_username })
+      );
+
+      log(`Player ${params.sender} bought ${amount} ${item_id} from ${seller_username} for ${Number(totalCost)} XPL`);
+      return { success: true };
+
+    } catch (error) {
+      log(`Error buying item: ${error.message}`);
+      const errorMessage = alert([], {
+        variant: 'destructive',
+        title: 'Purchase Failed',
+        description: error.message
+      });
+      await tellraw(params.sender, errorMessage.render({ platform: 'minecraft', player: params.sender }));
+      throw error;
+    }
   }
 }

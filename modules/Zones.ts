@@ -165,12 +165,12 @@ export class Zones {
     });
 
     // Add teleport point marker
-    await bluemap.addMarker("zones", `${markerId}_tp`, "poi", {
-      label: `${zone.name} Teleport`,
-      position: zone.center,
-      icon: "items/ender_pearl.png",
-      maxDistance: 1000,
-    });
+    // await bluemap.addMarker("zones", `${markerId}_tp`, "poi", {
+    //   label: `${zone.name} Teleport`,
+    //   position: zone.center,
+    //   icon: "items/ender_pearl.png",
+    //   maxDistance: 1000,
+    // });
   }
 
   private async createZoneDisplay(
@@ -191,9 +191,9 @@ export class Zones {
       );
 
       // Add glowing armor stand as central marker
-      await rcon.executeCommand(
-        `summon armor_stand ${coords.centerX} ${coords.centerY} ${coords.centerZ} {Glowing:1b,CustomNameVisible:1b,CustomName:'{"text":"Zone Center","color":"gold"}',Invisible:1b}`,
-      );
+      // await rcon.executeCommand(
+      //   `summon armor_stand ${coords.centerX} ${coords.centerY} ${coords.centerZ} {Glowing:1b,CustomNameVisible:1b,CustomName:'{"text":"Zone Center","color":"gold"}',Invisible:1b}`,
+      // );
     } catch (error) {
       throw new Error(`Failed to create zone display: ${error.message}`);
     }

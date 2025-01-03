@@ -250,6 +250,8 @@ export class ScriptInterpreter {
     }
   }
 
+// ScriptInterpreter.ts changes
+
   async loadModule(modulePath: string, moduleImport: any): Promise<void> {
     this.logger.debug(`Loading module from path: ${modulePath}`);
     try {
@@ -260,32 +262,46 @@ export class ScriptInterpreter {
           const moduleMetadata = getMetadata(exportedItem, 'module') as ModuleMetadata;
 
           if (moduleMetadata?.name && moduleMetadata?.version) {
+            // Generate module name based on file path if in subdirectory
+            const moduleName = this.getModuleNameFromPath(modulePath, moduleMetadata.name);
+
             // Check if module already exists and unload it first
-            if (this.modules.has(moduleMetadata.name)) {
-              this.logger.debug(`Module ${moduleMetadata.name} already exists, unloading first`);
-              await this.unloadModule(moduleMetadata.name);
+            if (this.modules.has(moduleName)) {
+              this.logger.debug(`Module ${moduleName} already exists, unloading first`);
+              await this.unloadModule(moduleName);
             }
 
             const moduleContext = this.contextFactory({
-              moduleName: moduleMetadata.name,
+              moduleName: moduleName,
               moduleVersion: moduleMetadata.version,
               modulePath: modulePath
             });
 
             const instance = new (exportedItem as new (context: ScriptContext) => ModuleInstance)(moduleContext);
-            this.modules.set(moduleMetadata.name, { instance, metadata: moduleMetadata });
-            this.logger.info(`Loaded module: ${moduleMetadata.name} v${moduleMetadata.version}`);
 
-            await this.processModuleMetadata(exportedItem, moduleMetadata);
+            // Store with potentially namespaced module name
+            this.modules.set(moduleName, {
+              instance,
+              metadata: {
+                ...moduleMetadata,
+                name: moduleName // Use potentially namespaced name
+              }
+            });
+
+            this.logger.info(`Loaded module: ${moduleName} v${moduleMetadata.version}`);
+
+            await this.processModuleMetadata(exportedItem, {
+              ...moduleMetadata,
+              name: moduleName // Pass potentially namespaced name
+            });
 
             // Call onLoad if it exists
             if (typeof instance.onLoad === 'function') {
               try {
                 await instance.onLoad();
               } catch (error) {
-                this.logger.error(`Error during module initialization for ${moduleMetadata.name}: ${(error as Error).message}`);
-                // Consider whether to unload the module on init failure
-                await this.unloadModule(moduleMetadata.name);
+                this.logger.error(`Error during module initialization for ${moduleName}: ${(error as Error).message}`);
+                await this.unloadModule(moduleName);
                 throw error;
               }
             }
@@ -296,6 +312,31 @@ export class ScriptInterpreter {
       this.logger.error(`Error loading module ${modulePath}: ${(error as Error).message}`);
       throw error;
     }
+  }
+
+  private getModuleNameFromPath(modulePath: string, originalName: string): string {
+    // Remove .ts extension and convert to path format
+    const cleanPath = modulePath.replace(/\.ts$/, '');
+
+    // Split path into segments
+    const pathSegments = cleanPath.split('/');
+
+    // Remove 'modules' from the path if present
+    const moduleIndex = pathSegments.indexOf('modules');
+    if (moduleIndex !== -1) {
+      pathSegments.splice(0, moduleIndex + 1);
+    }
+
+    // If module is in root modules directory, just return original name
+    if (pathSegments.length <= 1) {
+      return originalName;
+    }
+
+    // Create namespaced module name using directory structure
+    // e.g., 'admin/tools/cleaner.ts' becomes 'admin:tools:cleaner'
+    const namespacedName = pathSegments.join(':');
+
+    return namespacedName;
   }
 
   async unloadModule(moduleName: string): Promise<void> {

@@ -7,6 +7,7 @@ import { Logger } from "./logger.ts";
 import { AuthService } from "./AuthService.ts";
 import {RateLimiter} from "./RateLimiter.ts";
 import { PlayerManager, PlayerData } from "./PlayerManager.ts";
+import {DataReader, DenoriteProtocol} from "./DenoriteProtocol.ts";
 
 export class SocketManager {
   private config: ConfigManager;
@@ -15,6 +16,7 @@ export class SocketManager {
   private auth: AuthService;
   private rateLimiter!: RateLimiter;
   private playerManager!: PlayerManager;
+  private useBinaryProtocol = false;
 
   constructor(
     config: ConfigManager,
@@ -109,23 +111,18 @@ export class SocketManager {
 
   private handleMinecraftWebSocket(req: Request): Response {
     const { socket, response } = Deno.upgradeWebSocket(req);
-
-    // Generate a unique ID for this connection
     const connectionId = crypto.randomUUID();
+
+    socket.binaryType = "arraybuffer"; // Enable binary message support
 
     socket.onopen = async () => {
       this.logger.info("New Denorite WebSocket connection established");
-
-      // Add socket to script manager before emitting event
       this.scriptManager.addMinecraftSocket(socket, req);
-
-      // Emit connection event that can be handled by any module listening for "denorite_connected"
       await this.scriptManager.handleEvent("denorite_connected", {
         connectionId,
         timestamp: Date.now(),
         type: "minecraft",
         address: req.headers.get("X-Forwarded-For") || "unknown",
-        status: "connected",
         metadata: {
           userAgent: req.headers.get("User-Agent"),
           protocol: req.headers.get("Sec-WebSocket-Protocol"),
@@ -135,7 +132,12 @@ export class SocketManager {
 
     socket.onmessage = async (event) => {
       try {
-        await this.handleWebSocketMessage(event.data, socket, 'minecraft');
+        if (this.useBinaryProtocol && event.data instanceof ArrayBuffer) {
+          const data = new Uint8Array(event.data);
+          await this.handleBinaryMessage(data, socket);
+        } else {
+          await this.handleWebSocketMessage(event.data, socket, 'minecraft');
+        }
       } catch (error: any) {
         this.logger.error(`Error processing Minecraft WebSocket message: ${error.message}`);
       }
@@ -143,8 +145,6 @@ export class SocketManager {
 
     socket.onclose = async (event) => {
       this.logger.info("Denorite WebSocket connection closed");
-
-      // Emit disconnection event before removing socket
       await this.scriptManager.handleEvent("denorite_disconnected", {
         connectionId,
         timestamp: Date.now(),
@@ -154,12 +154,27 @@ export class SocketManager {
         reason: event.reason || "connection_closed",
         wasClean: event.wasClean
       });
-
-      // Remove socket from script manager
       this.scriptManager.removeMinecraftSocket(socket);
     };
 
     return response;
+  }
+
+  private async handleBinaryMessage(data: Uint8Array, socket: WebSocket) {
+    try {
+      const message = DenoriteProtocol.decodeMessage(data);
+
+      // Convert binary message to JSON format for ScriptManager compatibility
+      const jsonMessage = {
+        id: message.id.toString(),
+        ...message.data
+      };
+
+      // Use existing WebSocket message handler with converted data
+      await this.handleWebSocketMessage(JSON.stringify(jsonMessage), socket, 'minecraft');
+    } catch (error: any) {
+      this.logger.error(`Error handling binary message: ${error.message}`);
+    }
   }
 
   private handleRunnerWebSocket(req: Request): Response {

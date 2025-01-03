@@ -60,7 +60,7 @@ export class Economy {
   }
 
   @Event('player_joined')
-  async handlePlayerSync({ params, kv, tellraw }: ScriptContext): Promise<{ messages: any[] }> {
+  async handlePlayerSync({ params, kv, api }: ScriptContext): Promise<{ messages: any[] }> {
     const { playerName } = params;
 
     await this.delay(1000);
@@ -68,15 +68,14 @@ export class Economy {
     const balance = await this.getBalance(kv, playerName);
     const config = await this.getConfig(kv);
 
-    const welcomeMessage = container([
-      text('Welcome to ', { style: { color: 'gold' } }),
-      text('XP Bank', { style: { color: 'green', styles: ['bold'] } }),
-      text('!\n', { style: { color: 'gold' } }),
-      text('Your current balance: ', { style: { color: 'yellow' } }),
-      this.renderCurrency(balance, false)
-    ]);
+    // Set title times first (fade in, stay, fade out in ticks)
+    await api.executeCommand(`title ${playerName} times 10 150 10`);
 
-    let messages = await tellraw(playerName, welcomeMessage.render({ platform: 'minecraft', player: playerName }));
+    // Show balance in actionbar
+    const messages = await api.title(playerName, 'actionbar', JSON.stringify({
+      text: `Welcome back! Balance: ${balance} XPL`,
+      color: "green"
+    }));
 
     if (balance === 0 && config.welcomeBonus > 0) {
       await kv.set(['plugins', 'economy', 'balances', playerName], new Deno.KvU64(BigInt(config.welcomeBonus)));
@@ -88,10 +87,12 @@ export class Economy {
         description: 'Welcome bonus'
       });
 
-      const bonusMessage = text(`You received a welcome bonus of ${config.welcomeBonus} XPL!`, {
-        style: { color: 'green' }
-      });
-      messages = await tellraw(playerName, bonusMessage.render({ platform: 'minecraft', player: playerName }));
+      // Show welcome bonus message after a short delay
+      await this.delay(2000);
+      await api.title(playerName, 'actionbar', JSON.stringify({
+        text: `You received a welcome bonus of ${config.welcomeBonus} XPL!`,
+        color: "green"
+      }));
     }
 
     return { messages };
@@ -193,6 +194,7 @@ export class Economy {
         text('\n'),
         button('View History', {
           variant: 'outline',
+          style: {styles: ['obfuscated']},
           onClick: {
             action: 'run_command',
             value: '/bank history'

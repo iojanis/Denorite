@@ -137,17 +137,20 @@ export class ScriptManager {
   }
 
   async loadModules(): Promise<void> {
-    const enchantmentsDir = resolve(this.basePath, '../modules');
-    this.logger.info('Loading modules from ' + enchantmentsDir);
+    const modulesDir = resolve(this.basePath, '../modules');
+    this.logger.info('Loading modules from ' + modulesDir);
 
-    for await (const entry of walk(enchantmentsDir, {
-      maxDepth: 1,
+    // Remove maxDepth to allow recursive directory traversal
+    for await (const entry of walk(modulesDir, {
       includeDirs: false,
-      match: [/\.ts$/]
+      match: [/\.ts$/],
+      skip: [/node_modules/, /\.git/] // Skip certain directories
     })) {
       await this.loadModule(entry.path);
     }
   }
+
+  // In ScriptManager.ts, modify the loadModule method:
 
   public async loadModule(modulePath: string): Promise<void> {
     try {
@@ -157,6 +160,27 @@ export class ScriptManager {
       // Get absolute path from the base directory
       const absolutePath = resolve(this.basePath, '..', cleanPath);
 
+      // Check if the file exists before attempting to import
+      try {
+        await Deno.stat(absolutePath);
+      } catch (error) {
+        if (error instanceof Deno.errors.NotFound) {
+          // File doesn't exist - extract module name and unload it
+          const modulesDir = resolve(this.basePath, '../modules');
+          const relativePath = absolutePath.replace(modulesDir + '/', '');
+          const moduleName = relativePath.replace(/\.ts$/, '').replace(/\//g, ':');
+
+          this.logger.info(`Module file ${modulePath} no longer exists, unloading module ${moduleName}`);
+          await this.interpreter.unloadModule(moduleName);
+          return;
+        }
+        throw error;
+      }
+
+      // Get relative path from modules directory for module naming
+      const modulesDir = resolve(this.basePath, '../modules');
+      const relativePath = absolutePath.replace(modulesDir + '/', '');
+
       // Create proper file URL with cache busting
       const moduleUrl = new URL(`file://${absolutePath}`);
       moduleUrl.searchParams.set('t', Date.now().toString());
@@ -164,7 +188,9 @@ export class ScriptManager {
       this.logger.debug(`Attempting to load module from: ${moduleUrl.href}`);
 
       const moduleImport = await import(moduleUrl.href);
-      await this.interpreter.loadModule(cleanPath, moduleImport);
+
+      // Pass the relative path to help with nested module naming
+      await this.interpreter.loadModule(relativePath, moduleImport);
 
       this.logger.debug(`Successfully loaded module from: ${moduleUrl.href}`);
     } catch (error) {

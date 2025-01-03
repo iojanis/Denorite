@@ -26,11 +26,29 @@ export class ModuleWatcher {
   private scriptManager: ScriptManager;
   private logger: Logger;
   private watchDir: string;
+  private recentlyLoaded: Map<string, number> = new Map();
+  private debounceTime = 1000; // 1 second debounce
 
   constructor(scriptManager: ScriptManager, logger: Logger, watchDir: string) {
     this.scriptManager = scriptManager;
     this.logger = logger;
     this.watchDir = watchDir;
+  }
+
+  private isRecentlyLoaded(path: string): boolean {
+    const lastLoaded = this.recentlyLoaded.get(path);
+    if (!lastLoaded) return false;
+
+    const now = Date.now();
+    if (now - lastLoaded > this.debounceTime) {
+      this.recentlyLoaded.delete(path);
+      return false;
+    }
+    return true;
+  }
+
+  private markAsLoaded(path: string): void {
+    this.recentlyLoaded.set(path, Date.now());
   }
 
   private async extractAppMetadata(content: string): Promise<AppMetadata | null> {
@@ -150,36 +168,32 @@ export class ModuleWatcher {
       // Initial verification
       await this.verifyApps();
 
-      const watcher = Deno.watchFs(this.watchDir, {recursive: true});
+      const watcher = Deno.watchFs(this.watchDir, { recursive: true });
 
       for await (const event of watcher) {
         if (event.kind === "modify" || event.kind === "remove") {
           for (const path of event.paths) {
             if (path.endsWith('.ts')) {
+              // Clean the path
+              const cleanPath = path.replace(/^\/app\//, '');
+
+              // Skip if recently loaded
+              if (this.isRecentlyLoaded(cleanPath)) {
+                // this.logger.debug(`Skipping reload of recently loaded module: ${cleanPath}`);
+                continue;
+              }
+
+              // Add small delay to ensure file write is complete
               await new Promise(resolve => setTimeout(resolve, 100));
+
               try {
-                const cleanPath = path.replace(/^\/app\//, '');
+                this.markAsLoaded(cleanPath);
                 await this.scriptManager.loadModule(cleanPath);
                 this.logger.info(`Reloaded module: ${cleanPath}`);
               } catch (error) {
-                this.logger.error(`Failed to reload module ${path}: ${error}`);
+                this.logger.error(`Failed to reload module ${cleanPath}: ${error}`);
               }
             }
-            // else if (path.endsWith('.tell')) {
-            //   await new Promise(resolve => setTimeout(resolve, 100));
-            //   try {
-            //     if (event.kind === "modify") {
-            //       const content = await Deno.readTextFile(path);
-            //       const cleanPath = path.replace(/^\/app\//, '');
-            //       await this.registerVueApp(cleanPath, content);
-            //     } else if (event.kind === "remove") {
-            //       // Handle file removal by verifying all apps
-            //       await this.verifyApps();
-            //     }
-            //   } catch (error) {
-            //     this.logger.error(`Failed to handle Vue app ${path}: ${error}`);
-            //   }
-            // }
           }
         }
       }

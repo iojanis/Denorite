@@ -1,4 +1,4 @@
-import { Module, Socket, Permission, Event } from '../decorators.ts';
+import { Module, Socket, Permission, Event, Description, Command } from '../decorators.ts';
 import { ScriptContext } from '../types.ts';
 
 interface ItemTag {
@@ -111,11 +111,17 @@ export class Storage {
 
       // Verify item removal using clear command
       const clearResult = await api.clear(params.sender, item_id, count);
-
       const clearedMatch = clearResult.match(/Removed (\d+) item\(s\) from player (\w+)/);
 
-      if (!clearedMatch || parseInt(clearedMatch[1]) !== count) {
+      if (!clearedMatch) {
         throw new Error('Failed to remove items from inventory');
+      }
+
+      // Use actual cleared amount instead of requested amount
+      const actualCount = parseInt(clearedMatch[1]);
+
+      if (actualCount === 0) {
+        throw new Error('No items found to store');
       }
 
       // Get current stored item data
@@ -124,22 +130,124 @@ export class Storage {
 
       // Update or create item entry
       const updatedItem: StoredItem = {
-        count: (storedItem.value?.count || 0) + count,
+        count: (storedItem.value?.count || 0) + actualCount,
         price: storedItem.value?.price || 0,
         tag: storedItem.value?.tag
       };
 
       await kv.set(itemKey, updatedItem);
 
-      await api.tellraw(params.sender, JSON.stringify({
-        text: `Successfully stored ${count} ${item_id}`,
+      // Set title times first (fade in, stay, fade out in ticks)
+      await api.executeCommand(`title ${params.sender} times 10 40 10`);
+
+      await api.title(params.sender, 'actionbar', JSON.stringify({
+        text: `Successfully stored ${actualCount} ${item_id}`,
         color: "green"
       }));
 
-      log(`Player ${params.sender} uploaded ${count} ${item_id}`);
+      log(`Player ${params.sender} uploaded ${actualCount} ${item_id}`);
       return { success: true };
     } catch (error) {
       log(`Error uploading item: ${error.message}`);
+      throw error;
+    }
+  }
+
+  @Command(['inventory', 'stash'])
+  @Description('Stash all items from your inventory except hotbar')
+  @Permission('player')
+  async handleStashCommand({ params, kv, api, log }: ScriptContext): Promise<{ success: boolean }> {
+    try {
+      const { sender } = params;
+
+      // Get current inventory
+      const response = await api.executeCommand(`data get entity ${sender} Inventory`);
+      const inventory = this.parseInventory(response);
+
+      // Filter for non-hotbar items (slots 0-8 are hotbar, so we want 9-35)
+      const itemsToStash = inventory.filter(item =>
+        item.slot >= 9 &&
+        item.slot <= 35 &&
+        !this.FORBIDDEN_ITEMS.includes(item.id)
+      );
+
+      if (itemsToStash.length === 0) {
+        await api.title(sender, 'actionbar', JSON.stringify({
+          text: "No items to stash",
+          color: "yellow"
+        }));
+        return { success: true };
+      }
+
+      // Group items by ID to stash them together
+      const groupedItems = new Map<string, number>();
+      for (const item of itemsToStash) {
+        const current = groupedItems.get(item.id) || 0;
+        groupedItems.set(item.id, current + item.count);
+      }
+
+      // Process each item type
+      let stashedCount = 0;
+      let totalItems = 0;
+      let failedItems = [];
+
+      for (const [itemId, totalCount] of groupedItems.entries()) {
+        try {
+          totalItems++;
+          // Clear command will handle the actual available amount
+          const clearResult = await api.clear(sender, itemId, totalCount);
+          const clearedMatch = clearResult.match(/Removed (\d+) item\(s\) from player (\w+)/);
+
+          if (!clearedMatch) {
+            failedItems.push(itemId);
+            continue;
+          }
+
+          const actualCount = parseInt(clearedMatch[1]);
+          if (actualCount === 0) {
+            continue;
+          }
+
+          // Get current stored item data
+          const itemKey = this.getItemStoreKey(sender, itemId);
+          const storedItem = await kv.get<StoredItem>(itemKey);
+
+          // Update or create item entry
+          const updatedItem: StoredItem = {
+            count: (storedItem.value?.count || 0) + actualCount,
+            price: storedItem.value?.price || 0,
+            tag: storedItem.value?.tag
+          };
+
+          await kv.set(itemKey, updatedItem);
+          stashedCount += actualCount;
+        } catch (error) {
+          failedItems.push(itemId);
+          log(`Error stashing ${itemId}: ${error.message}`);
+        }
+      }
+
+      // Set title times first (fade in, stay, fade out in ticks)
+      await api.executeCommand(`title ${sender} times 10 40 10`);
+
+      // Show result message
+      if (failedItems.length === 0) {
+        await api.title(sender, 'actionbar', JSON.stringify({
+          text: `Successfully stashed ${stashedCount} items`,
+          color: "green"
+        }));
+      } else {
+        await api.title(sender, 'actionbar', JSON.stringify({
+          text: `Stashed ${stashedCount} items. Some items failed.`,
+          color: "yellow"
+        }));
+      }
+
+      log(`Player ${sender} stashed ${stashedCount} items. Failed items: ${failedItems.join(', ')}`);
+      return { success: true };
+
+    } catch (error) {
+      log(`Error in stash command: ${error.message}`);
       throw error;
     }
   }
@@ -166,7 +274,10 @@ export class Storage {
         price
       });
 
-      await api.tellraw(params.sender, JSON.stringify({
+      // Set title times first (fade in, stay, fade out in ticks)
+      await api.executeCommand(`title ${params.sender} times 10 40 10`);
+
+      await api.title(params.sender, 'actionbar', JSON.stringify({
         text: price > 0
           ? `Listed ${item_name} for ${price} coins`
           : `Unlisted ${item_name} from market`,
@@ -217,7 +328,10 @@ export class Storage {
         });
       }
 
-      await api.tellraw(params.sender, JSON.stringify({
+      // Set title times first (fade in, stay, fade out in ticks)
+      await api.executeCommand(`title ${params.sender} times 10 40 10`);
+
+      await api.title(params.sender, 'actionbar', JSON.stringify({
         text: `Retrieved ${count} ${item_id} from storage`,
         color: "green"
       }));

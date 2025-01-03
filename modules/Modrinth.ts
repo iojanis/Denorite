@@ -1,5 +1,5 @@
-import { Module, Command, Description, Permission, Argument } from "../../decorators.ts";
-import { ScriptContext } from "../../types.ts";
+import { Module, Command, Description, Permission, Argument } from "../decorators.ts";
+import { ScriptContext } from "../types.ts";
 
 interface ModrinthProject {
   slug: string;

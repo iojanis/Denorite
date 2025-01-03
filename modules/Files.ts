@@ -1,8 +1,8 @@
-import { Module, Command, Description, Permission, Argument } from "../../decorators.ts";
-import { ScriptContext } from "../../types.ts";
+import { Module, Command, Description, Permission, Argument } from "../decorators.ts";
+import { ScriptContext } from "../types.ts";
 import { walk } from "https://deno.land/std@0.177.0/fs/mod.ts";
 import { dirname, basename, join, relative, normalize, isAbsolute } from "https://deno.land/std@0.177.0/path/mod.ts";
-import { text, button, container, alert, divider } from "../../tellraw-ui.ts";
+import { text, button, container, alert, divider } from "../tellraw-ui.ts";
 
 interface SenderState {
   cwd: string;

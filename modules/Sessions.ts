@@ -1,6 +1,6 @@
-import {Command, Description, Event, Module, Permission, Socket} from "../../decorators.ts";
-import {ScriptContext} from "../../types.ts";
-import {alert, container, TellrawJSON, text, button, tooltip} from "../../tellraw-ui.ts";
+import {Command, Description, Event, Module, Permission, Socket} from "../decorators.ts";
+import {ScriptContext} from "../types.ts";
+import {alert, container, TellrawJSON, text, button, tooltip} from "../tellraw-ui.ts";
 
 interface SessionData {
   startTime: string;

@@ -1,6 +1,6 @@
-import { Module, Command, Description, Permission, Event, Argument } from "../../decorators.ts";
-import { text, button, container, alert, divider } from "../../tellraw-ui.ts";
-import type { ScriptContext } from "../../types.ts";
+import { Module, Command, Description, Permission, Event, Argument } from "../decorators.ts";
+import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import type { ScriptContext } from "../types.ts";
 
 @Module({
   name: 'Clockwork',

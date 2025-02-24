@@ -47,15 +47,15 @@ Denorite's architecture consists of:
 
 ### Prerequisites
 
-- Deno (v1.30 or higher)
-- A Minecraft server with WebSocket support
+- Deno (v2.0 or higher)
+- A Minecraft server with fabric and Denorite mod installed
 - Basic knowledge of TypeScript
 
 ### Installation
 
 1. Clone the Denorite repository:
    ```bash
-   git clone https://github.com/yourusername/denorite.git
+   git clone https://github.com/iojanis/denorite.git
    cd denorite
    ```
 

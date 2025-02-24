@@ -1,5 +1,12 @@
-import { Module, Command, Description, Permission, Socket, Event } from '../decorators.ts';
-import type { ScriptContext } from '../types';
+import {
+  Command,
+  Description,
+  Event,
+  Module,
+  Permission,
+  Socket,
+} from "../decorators.ts";
+import type { ScriptContext } from "../types";
 
 interface DeathLocation {
   x: number;
@@ -115,8 +122,8 @@ interface ServerStats {
 }
 
 @Module({
-  name: 'Statistics',
-  version: '1.0.0'
+  name: "Statistics",
+  version: "1.0.0",
 })
 export class StatisticsModule {
   private store: {
@@ -127,7 +134,6 @@ export class StatisticsModule {
 
   private kv: Deno.Kv;
   private logger: (message: string) => void;
-
 
   constructor(context: ScriptContext) {
     // Initialize basic dependencies
@@ -144,32 +150,32 @@ export class StatisticsModule {
           unique: [],
           peak: 0,
           peakTime: Date.now(),
-          current: 0
+          current: 0,
         },
         blocks: {
           broken: {},
           placed: {},
-          interacted: {}
+          interacted: {},
         },
         items: {
           used: {},
           crafted: {},
-          dropped: {}
+          dropped: {},
         },
         deaths: {
           total: 0,
-          causes: {}
+          causes: {},
         },
         kills: {
           players: 0,
-          mobs: {}
+          mobs: {},
         },
         chat: {
           messages: 0,
-          commands: 0
-        }
+          commands: 0,
+        },
       },
-      lastSave: Date.now()
+      lastSave: Date.now(),
     };
 
     // Initialize data asynchronously but don't await
@@ -179,18 +185,23 @@ export class StatisticsModule {
   private async initializeAsync(): Promise<void> {
     try {
       // Load server stats
-      const serverStats = await this.kv.get<ServerStats>(['statistics', 'server']);
+      const serverStats = await this.kv.get<ServerStats>([
+        "statistics",
+        "server",
+      ]);
       if (serverStats.value) {
         this.store.server = serverStats.value;
       }
 
       // Load player stats
-      const playerStats = this.kv.list<PlayerStats>({ prefix: ['statistics', 'players'] });
+      const playerStats = this.kv.list<PlayerStats>({
+        prefix: ["statistics", "players"],
+      });
       for await (const entry of playerStats) {
         this.store.players.set(entry.value.playerName, entry.value);
       }
 
-      this.logger('Statistics module initialized successfully');
+      this.logger("Statistics module initialized successfully");
     } catch (error) {
       this.logger(`Error initializing statistics store: ${error}`);
     }
@@ -204,34 +215,37 @@ export class StatisticsModule {
         unique: [],
         peak: 0,
         peakTime: Date.now(),
-        current: 0
+        current: 0,
       },
       blocks: {
         broken: {},
         placed: {},
-        interacted: {}
+        interacted: {},
       },
       items: {
         used: {},
         crafted: {},
-        dropped: {}
+        dropped: {},
       },
       deaths: {
         total: 0,
-        causes: {}
+        causes: {},
       },
       kills: {
         players: 0,
-        mobs: {}
+        mobs: {},
       },
       chat: {
         messages: 0,
-        commands: 0
-      }
+        commands: 0,
+      },
     };
   }
 
-  private createDefaultPlayerStats(playerId: string, playerName: string): PlayerStats {
+  private createDefaultPlayerStats(
+    playerId: string,
+    playerName: string,
+  ): PlayerStats {
     return {
       playerId,
       playerName,
@@ -239,45 +253,50 @@ export class StatisticsModule {
       lastSeen: Date.now(),
       timeTracking: {
         total: 0,
-        sessions: []
+        sessions: [],
       },
       deaths: {
         total: 0,
         causes: {},
-        locations: []
+        locations: [],
       },
       kills: {
         players: {},
         mobs: {},
-        total: 0
+        total: 0,
       },
       blocks: {
         broken: {},
         placed: {},
-        interacted: {}
+        interacted: {},
       },
       items: {
         used: {},
         crafted: {},
-        dropped: {}
+        dropped: {},
       },
       chat: {
         messages: 0,
-        commands: 0
-      }
+        commands: 0,
+      },
     };
   }
 
   private async initialize(): Promise<void> {
     try {
       // Load server stats
-      const serverStats = await this.kv.get<ServerStats>(['statistics', 'server']);
+      const serverStats = await this.kv.get<ServerStats>([
+        "statistics",
+        "server",
+      ]);
       if (serverStats.value) {
         this.store.server = serverStats.value;
       }
 
       // Load player stats
-      const playerStats = this.kv.list<PlayerStats>({ prefix: ['statistics', 'players'] });
+      const playerStats = this.kv.list<PlayerStats>({
+        prefix: ["statistics", "players"],
+      });
       for await (const entry of playerStats) {
         this.store.players.set(entry.value.playerName, entry.value);
       }
@@ -292,12 +311,12 @@ export class StatisticsModule {
 
     try {
       // Save server stats
-      await this.kv.set(['statistics', 'server'], this.store.server);
+      await this.kv.set(["statistics", "server"], this.store.server);
 
       // Save player stats
       const atomic = this.kv.atomic();
       for (const [playerName, stats] of this.store.players.entries()) {
-        atomic.set(['statistics', 'players', playerName], stats);
+        atomic.set(["statistics", "players", playerName], stats);
       }
       await atomic.commit();
 
@@ -310,25 +329,25 @@ export class StatisticsModule {
   private parseDeathCause(deathMessage: string): string {
     deathMessage = deathMessage.toLowerCase();
     const causes = {
-      FALL: ['fell', 'hit the ground', 'fell from a high place'],
-      DROWNING: ['drowned'],
-      FIRE: ['burned', 'flames', 'fire'],
-      EXPLOSION: ['blown up', 'explosion'],
-      VOID: ['fell out of the world', 'in the void'],
-      PVP: ['slain by', 'shot by'],
-      MOB: ['zombie', 'skeleton', 'creeper', 'spider'],
-      MAGIC: ['magic', 'potion', 'withered away'],
-      STARVE: ['starved'],
-      SUFFOCATION: ['suffocated']
+      FALL: ["fell", "hit the ground", "fell from a high place"],
+      DROWNING: ["drowned"],
+      FIRE: ["burned", "flames", "fire"],
+      EXPLOSION: ["blown up", "explosion"],
+      VOID: ["fell out of the world", "in the void"],
+      PVP: ["slain by", "shot by"],
+      MOB: ["zombie", "skeleton", "creeper", "spider"],
+      MAGIC: ["magic", "potion", "withered away"],
+      STARVE: ["starved"],
+      SUFFOCATION: ["suffocated"],
     };
 
     for (const [cause, patterns] of Object.entries(causes)) {
-      if (patterns.some(pattern => deathMessage.includes(pattern))) {
+      if (patterns.some((pattern) => deathMessage.includes(pattern))) {
         return cause;
       }
     }
 
-    return 'OTHER';
+    return "OTHER";
   }
 
   private formatTime(ms: number): string {
@@ -351,7 +370,7 @@ export class StatisticsModule {
 
   private getTopStats<T extends Record<string, number>>(
     stats: T,
-    limit: number = 5
+    limit: number = 5,
   ): Array<[string, number]> {
     return Object.entries(stats)
       .sort(([, a], [, b]) => b - a)
@@ -367,7 +386,7 @@ export class StatisticsModule {
     return stats;
   }
 
-  @Event('player_joined')
+  @Event("player_joined")
   async handlePlayerJoin(context: ScriptContext): Promise<void> {
     const { playerId, playerName } = context.params;
 
@@ -388,7 +407,7 @@ export class StatisticsModule {
     await this.saveStore();
   }
 
-  @Event('player_left')
+  @Event("player_left")
   async handlePlayerLeave(context: ScriptContext): Promise<void> {
     const { playerName } = context.params;
     const stats = this.store.players.get(playerName);
@@ -397,7 +416,7 @@ export class StatisticsModule {
       const session = {
         start: stats.timeTracking.lastStart,
         end: Date.now(),
-        duration: Date.now() - stats.timeTracking.lastStart
+        duration: Date.now() - stats.timeTracking.lastStart,
       };
       stats.timeTracking.sessions.push(session);
       stats.timeTracking.total += session.duration;
@@ -405,11 +424,14 @@ export class StatisticsModule {
       stats.lastSeen = Date.now();
     }
 
-    this.store.server.players.current = Math.max(0, this.store.server.players.current - 1);
+    this.store.server.players.current = Math.max(
+      0,
+      this.store.server.players.current - 1,
+    );
     await this.saveStore();
   }
 
-  @Event('player_death')
+  @Event("player_death")
   async handlePlayerDeath(context: ScriptContext): Promise<void> {
     const { playerName, deathMessage, x, y, z, dimension } = context.params;
     const cause = this.parseDeathCause(deathMessage);
@@ -423,12 +445,15 @@ export class StatisticsModule {
 
       // Update death location
       const deathLocation: DeathLocation = {
-        x, y, z, dimension,
+        x,
+        y,
+        z,
+        dimension,
         count: 1,
-        lastDeath: Date.now()
+        lastDeath: Date.now(),
       };
 
-      const existingLocation = stats.deaths.locations.find(loc =>
+      const existingLocation = stats.deaths.locations.find((loc) =>
         loc.dimension === dimension &&
         Math.abs(loc.x - x) < 5 &&
         Math.abs(loc.y - y) < 5 &&
@@ -451,12 +476,13 @@ export class StatisticsModule {
 
     // Update server death statistics
     this.store.server.deaths.total++;
-    this.store.server.deaths.causes[cause] = (this.store.server.deaths.causes[cause] || 0) + 1;
+    this.store.server.deaths.causes[cause] =
+      (this.store.server.deaths.causes[cause] || 0) + 1;
 
     await this.saveStore();
   }
 
-  @Event('player_chat')
+  @Event("player_chat")
   async handlePlayerChat(context: ScriptContext): Promise<void> {
     const { playerName } = context.params;
     const stats = this.store.players.get(playerName);
@@ -470,7 +496,7 @@ export class StatisticsModule {
     await this.saveStore();
   }
 
-  @Event('player_command')
+  @Event("player_command")
   async handlePlayerCommand(context: ScriptContext): Promise<void> {
     const { playerName } = context.params;
     const stats = this.store.players.get(playerName);
@@ -484,7 +510,7 @@ export class StatisticsModule {
     await this.saveStore();
   }
 
-  @Event('player_break_block_after')
+  @Event("player_break_block_after")
   async handleBlockBreak(context: ScriptContext): Promise<void> {
     const { playerName, block, x, y, z, dimension } = context.params;
     const stats = this.store.players.get(playerName);
@@ -494,7 +520,7 @@ export class StatisticsModule {
         stats.blocks.broken[block] = {
           count: 0,
           lastInteraction: 0,
-          locations: []
+          locations: [],
         };
       }
 
@@ -508,11 +534,12 @@ export class StatisticsModule {
       }
     }
 
-    this.store.server.blocks.broken[block] = (this.store.server.blocks.broken[block] || 0) + 1;
+    this.store.server.blocks.broken[block] =
+      (this.store.server.blocks.broken[block] || 0) + 1;
     await this.saveStore();
   }
 
-  @Event('player_use_item')
+  @Event("player_use_item")
   async handleItemUse(context: ScriptContext): Promise<void> {
     const { playerName, item } = context.params;
     const stats = this.store.players.get(playerName);
@@ -521,7 +548,7 @@ export class StatisticsModule {
       if (!stats.items.used[item]) {
         stats.items.used[item] = {
           count: 0,
-          lastUsed: 0
+          lastUsed: 0,
         };
       }
 
@@ -529,72 +556,91 @@ export class StatisticsModule {
       stats.items.used[item].lastUsed = Date.now();
     }
 
-    this.store.server.items.used[item] = (this.store.server.items.used[item] || 0) + 1;
+    this.store.server.items.used[item] =
+      (this.store.server.items.used[item] || 0) + 1;
     await this.saveStore();
   }
 
-  @Command(['stats'])
-  @Description('View your statistics')
-  @Permission('player')
+  @Command(["stats"])
+  @Description("View your statistics")
+  @Permission("player")
   async viewStats({ params, api }: ScriptContext): Promise<void> {
     const { sender } = params;
     const stats = this.store.players.get(sender);
 
     if (!stats) {
-      await api.tellraw(sender, JSON.stringify({
-        text: "No statistics available.",
-        color: "red"
-      }));
+      await api.tellraw(
+        sender,
+        JSON.stringify({
+          text: "No statistics available.",
+          color: "red",
+        }),
+      );
       return;
     }
 
     const messages = [
-      `§6=== Your Statistics`
-      `§6=== Your Statistics ===`,
+      `§6=== Your Statistics``§6=== Your Statistics ===`,
       `§7First Join: §f${new Date(stats.firstJoin).toLocaleDateString()}`,
       `§7Total Playtime: §f${this.formatTime(stats.timeTracking.total)}`,
       `§7Last Seen: §f${new Date(stats.lastSeen).toLocaleString()}`,
-      '',
-      '§6=== Combat ===',
+      "",
+      "§6=== Combat ===",
       `§7Deaths: §f${stats.deaths.total}`,
-      `§7Player Kills: §f${Object.values(stats.kills.players).reduce((sum, kill) => sum + kill.count, 0)}`,
-      `§7Mob Kills: §f${Object.values(stats.kills.mobs).reduce((sum, kill) => sum + kill.count, 0)}`,
-      '',
-      '§6=== Top Death Causes ===',
+      `§7Player Kills: §f${
+        Object.values(stats.kills.players).reduce((sum, kill) =>
+          sum + kill.count, 0)
+      }`,
+      `§7Mob Kills: §f${
+        Object.values(stats.kills.mobs).reduce(
+          (sum, kill) => sum + kill.count,
+          0,
+        )
+      }`,
+      "",
+      "§6=== Top Death Causes ===",
       ...this.getTopStats(stats.deaths.causes)
         .map(([cause, count]) => `§7${cause}: §f${count}`),
-      '',
-      '§6=== Blocks ===',
-      `§7Total Broken: §f${Object.values(stats.blocks.broken)
-      .reduce((sum, block) => sum + block.count, 0)}`,
-      `§7Total Placed: §f${Object.values(stats.blocks.placed)
-      .reduce((sum, block) => sum + block.count, 0)}`,
-      '',
-      '§6=== Most Broken Blocks ===',
+      "",
+      "§6=== Blocks ===",
+      `§7Total Broken: §f${
+        Object.values(stats.blocks.broken)
+          .reduce((sum, block) => sum + block.count, 0)
+      }`,
+      `§7Total Placed: §f${
+        Object.values(stats.blocks.placed)
+          .reduce((sum, block) => sum + block.count, 0)
+      }`,
+      "",
+      "§6=== Most Broken Blocks ===",
       ...this.getTopStats(
         Object.fromEntries(
           Object.entries(stats.blocks.broken)
-            .map(([block, data]) => [block, data.count])
-        )
+            .map(([block, data]) => [block, data.count]),
+        ),
       ).map(([block, count]) => `§7${block}: §f${count}`),
-      '',
-      '§6=== Items ===',
-      `§7Total Used: §f${Object.values(stats.items.used)
-      .reduce((sum, item) => sum + item.count, 0)}`,
-      `§7Total Crafted: §f${Object.values(stats.items.crafted)
-      .reduce((sum, item) => sum + item.count, 0)}`,
-      '',
-      '§6=== Most Used Items ===',
+      "",
+      "§6=== Items ===",
+      `§7Total Used: §f${
+        Object.values(stats.items.used)
+          .reduce((sum, item) => sum + item.count, 0)
+      }`,
+      `§7Total Crafted: §f${
+        Object.values(stats.items.crafted)
+          .reduce((sum, item) => sum + item.count, 0)
+      }`,
+      "",
+      "§6=== Most Used Items ===",
       ...this.getTopStats(
         Object.fromEntries(
           Object.entries(stats.items.used)
-            .map(([item, data]) => [item, data.count])
-        )
+            .map(([item, data]) => [item, data.count]),
+        ),
       ).map(([item, count]) => `§7${item}: §f${count}`),
-      '',
-      '§6=== Communication ===',
+      "",
+      "§6=== Communication ===",
       `§7Messages Sent: §f${stats.chat.messages}`,
-      `§7Commands Used: §f${stats.chat.commands}`
+      `§7Commands Used: §f${stats.chat.commands}`,
     ];
 
     for (const message of messages) {
@@ -602,9 +648,9 @@ export class StatisticsModule {
     }
   }
 
-  @Command(['stats', 'server'])
-  @Description('View server statistics')
-  @Permission('player')
+  @Command(["stats", "server"])
+  @Description("View server statistics")
+  @Permission("player")
   async viewServerStats({ params, api }: ScriptContext): Promise<void> {
     const stats = this.store.server;
     const messages = [
@@ -612,30 +658,32 @@ export class StatisticsModule {
       `§7Uptime: §f${this.formatTime(Date.now() - stats.startTime)}`,
       `§7Total Players: §f${stats.players.total}`,
       `§7Unique Players: §f${stats.players.unique.length}`,
-      `§7Peak Players: §f${stats.players.peak} (${new Date(stats.players.peakTime).toLocaleString()})`,
+      `§7Peak Players: §f${stats.players.peak} (${
+        new Date(stats.players.peakTime).toLocaleString()
+      })`,
       `§7Current Players: §f${stats.players.current}`,
-      '',
-      '§6=== Player Activity ===',
+      "",
+      "§6=== Player Activity ===",
       `§7Total Deaths: §f${stats.deaths.total}`,
       `§7Player Kills: §f${stats.kills.players}`,
       `§7Messages Sent: §f${stats.chat.messages}`,
       `§7Commands Used: §f${stats.chat.commands}`,
-      '',
-      '§6=== Most Common Death Causes ===',
+      "",
+      "§6=== Most Common Death Causes ===",
       ...this.getTopStats(stats.deaths.causes)
         .map(([cause, count]) => `§7${cause}: §f${count}`),
-      '',
-      '§6=== Most Killed Mobs ===',
+      "",
+      "§6=== Most Killed Mobs ===",
       ...this.getTopStats(stats.kills.mobs)
         .map(([mob, count]) => `§7${mob}: §f${count}`),
-      '',
-      '§6=== Most Broken Blocks ===',
+      "",
+      "§6=== Most Broken Blocks ===",
       ...this.getTopStats(stats.blocks.broken)
         .map(([block, count]) => `§7${block}: §f${count}`),
-      '',
-      '§6=== Most Used Items ===',
+      "",
+      "§6=== Most Used Items ===",
       ...this.getTopStats(stats.items.used)
-        .map(([item, count]) => `§7${item}: §f${count}`)
+        .map(([item, count]) => `§7${item}: §f${count}`),
     ];
 
     for (const message of messages) {
@@ -643,19 +691,22 @@ export class StatisticsModule {
     }
   }
 
-  @Command(['stats', 'player'])
-  @Description('View another player\'s statistics')
-  @Permission('player')
+  @Command(["stats", "player"])
+  @Description("View another player's statistics")
+  @Permission("player")
   async viewPlayerStats({ params, api }: ScriptContext): Promise<void> {
     const { sender, args } = params;
     const targetPlayer = args.player as string;
     const stats = this.store.players.get(targetPlayer);
 
     if (!stats) {
-      await api.tellraw(sender, JSON.stringify({
-        text: `No statistics available for player ${targetPlayer}.`,
-        color: "red"
-      }));
+      await api.tellraw(
+        sender,
+        JSON.stringify({
+          text: `No statistics available for player ${targetPlayer}.`,
+          color: "red",
+        }),
+      );
       return;
     }
 
@@ -664,81 +715,100 @@ export class StatisticsModule {
       `§7First Join: §f${new Date(stats.firstJoin).toLocaleDateString()}`,
       `§7Total Playtime: §f${this.formatTime(stats.timeTracking.total)}`,
       `§7Last Seen: §f${new Date(stats.lastSeen).toLocaleString()}`,
-      '',
-      '§6=== Combat ===',
+      "",
+      "§6=== Combat ===",
       `§7Deaths: §f${stats.deaths.total}`,
-      `§7Player Kills: §f${Object.values(stats.kills.players).reduce((sum, kill) => sum + kill.count, 0)}`,
-      `§7Mob Kills: §f${Object.values(stats.kills.mobs).reduce((sum, kill) => sum + kill.count, 0)}`,
-      '',
-      '§6=== Activity ===',
-      `§7Blocks Broken: §f${Object.values(stats.blocks.broken).reduce((sum, block) => sum + block.count, 0)}`,
-      `§7Items Used: §f${Object.values(stats.items.used).reduce((sum, item) => sum + item.count, 0)}`,
-      `§7Messages Sent: §f${stats.chat.messages}`
-  ];
+      `§7Player Kills: §f${
+        Object.values(stats.kills.players).reduce((sum, kill) =>
+          sum + kill.count, 0)
+      }`,
+      `§7Mob Kills: §f${
+        Object.values(stats.kills.mobs).reduce(
+          (sum, kill) => sum + kill.count,
+          0,
+        )
+      }`,
+      "",
+      "§6=== Activity ===",
+      `§7Blocks Broken: §f${
+        Object.values(stats.blocks.broken).reduce((sum, block) =>
+          sum + block.count, 0)
+      }`,
+      `§7Items Used: §f${
+        Object.values(stats.items.used).reduce(
+          (sum, item) => sum + item.count,
+          0,
+        )
+      }`,
+      `§7Messages Sent: §f${stats.chat.messages}`,
+    ];
 
     for (const message of messages) {
       await api.tellraw(sender, message);
     }
   }
 
-  @Socket('get_statistics')
+  @Socket("get_statistics")
   async getStatistics(): Promise<ServerStats> {
     return this.store.server;
   }
 
-  @Socket('get_player_statistics')
-  async getPlayerStatistics(context: ScriptContext): Promise<PlayerStats | null> {
+  @Socket("get_player_statistics")
+  async getPlayerStatistics(
+    context: ScriptContext,
+  ): Promise<PlayerStats | null> {
     const { playerName } = context.params;
     return this.store.players.get(playerName) || null;
   }
 
-  @Socket('get_leaderboard')
+  @Socket("get_leaderboard")
   async getLeaderboard(context: ScriptContext): Promise<{
     type: string;
     data: Array<{ name: string; value: number; extra?: string }>;
   }> {
-    const { type = 'kills' } = context.params;
-    const leaderboard: Array<{ name: string; value: number; extra?: string }> = [];
+    const { type = "kills" } = context.params;
+    const leaderboard: Array<{ name: string; value: number; extra?: string }> =
+      [];
 
     switch (type) {
-      case 'kills':
+      case "kills":
         for (const [name, stats] of this.store.players.entries()) {
           const totalKills = stats.kills.total;
           const kd = (totalKills / (stats.deaths.total || 1)).toFixed(2);
           leaderboard.push({
             name,
             value: totalKills,
-            extra: `K/D: ${kd}`
+            extra: `K/D: ${kd}`,
           });
         }
         break;
 
-      case 'playtime':
+      case "playtime":
         for (const [name, stats] of this.store.players.entries()) {
           leaderboard.push({
             name,
             value: stats.timeTracking.total,
-            extra: this.formatTime(stats.timeTracking.total)
+            extra: this.formatTime(stats.timeTracking.total),
           });
         }
         break;
 
-      case 'blocks':
+      case "blocks":
         for (const [name, stats] of this.store.players.entries()) {
           const totalBlocks = Object.values(stats.blocks.broken)
             .reduce((sum, block) => sum + block.count, 0);
           leaderboard.push({
             name,
-            value: totalBlocks
+            value: totalBlocks,
           });
         }
         break;
 
-      case 'deaths':
+      case "deaths":
         for (const [name, stats] of this.store.players.entries()) {
           leaderboard.push({
             name,
-            value: stats.deaths.total
+            value: stats.deaths.total,
           });
         }
         break;
@@ -748,7 +818,7 @@ export class StatisticsModule {
       type,
       data: leaderboard
         .sort((a, b) => b.value - a.value)
-        .slice(0, 10)
+        .slice(0, 10),
     };
   }
 }

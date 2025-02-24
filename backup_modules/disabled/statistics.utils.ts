@@ -1,35 +1,43 @@
 // utils.ts
 
-import type { Location, DeathLocation, PlayerStatistics, ServerStatistics } from './statistics.types';
+import type {
+  DeathLocation,
+  Location,
+  PlayerStatistics,
+  ServerStatistics,
+} from "./statistics.types";
 
 export class StatisticsUtils {
   static readonly DEATH_CAUSES = {
-    FALL: ['fell', 'hit the ground', 'fell from a high place'],
-    DROWNING: ['drowned'],
-    FIRE: ['burned', 'flames', 'fire'],
-    EXPLOSION: ['blown up', 'explosion'],
-    VOID: ['fell out of the world', 'in the void'],
-    PVP: ['slain by', 'shot by'],
-    MOB: ['skeleton', 'zombie', 'creeper', 'spider'],
-    MAGIC: ['magic', 'potion', 'withered away'],
-    STARVE: ['starved'],
-    SUFFOCATION: ['suffocated'],
-    OTHER: []
+    FALL: ["fell", "hit the ground", "fell from a high place"],
+    DROWNING: ["drowned"],
+    FIRE: ["burned", "flames", "fire"],
+    EXPLOSION: ["blown up", "explosion"],
+    VOID: ["fell out of the world", "in the void"],
+    PVP: ["slain by", "shot by"],
+    MOB: ["skeleton", "zombie", "creeper", "spider"],
+    MAGIC: ["magic", "potion", "withered away"],
+    STARVE: ["starved"],
+    SUFFOCATION: ["suffocated"],
+    OTHER: [],
   };
 
   static parseDeathCause(deathMessage: string): string {
     deathMessage = deathMessage.toLowerCase();
 
     for (const [cause, patterns] of Object.entries(this.DEATH_CAUSES)) {
-      if (patterns.some(pattern => deathMessage.includes(pattern))) {
+      if (patterns.some((pattern) => deathMessage.includes(pattern))) {
         return cause;
       }
     }
 
-    return 'OTHER';
+    return "OTHER";
   }
 
-  static createDefaultPlayerStats(playerId: string, playerName: string): PlayerStatistics {
+  static createDefaultPlayerStats(
+    playerId: string,
+    playerName: string,
+  ): PlayerStatistics {
     return {
       playerId,
       playerName,
@@ -37,34 +45,34 @@ export class StatisticsUtils {
       lastSeen: Date.now(),
       timeTracking: {
         total: 0,
-        sessions: []
+        sessions: [],
       },
       deaths: {
         total: 0,
         causes: {},
-        locations: []
+        locations: [],
       },
       kills: {
         players: {},
         mobs: {},
-        total: 0
+        total: 0,
       },
       blocks: {
         broken: {},
         placed: {},
-        interacted: {}
+        interacted: {},
       },
       items: {
         used: {},
         crafted: {},
         dropped: {},
-        collected: {}
+        collected: {},
       },
       chat: {
         messages: 0,
-        commands: 0
+        commands: 0,
       },
-      achievements: {}
+      achievements: {},
     };
   }
 
@@ -76,31 +84,31 @@ export class StatisticsUtils {
         unique: [],
         peak: 0,
         peakTime: Date.now(),
-        current: 0
+        current: 0,
       },
       blocks: {
         broken: {},
         placed: {},
-        interacted: {}
+        interacted: {},
       },
       items: {
         used: {},
         crafted: {},
         dropped: {},
-        collected: {}
+        collected: {},
       },
       deaths: {
         total: 0,
-        causes: {}
+        causes: {},
       },
       kills: {
         players: 0,
-        mobs: {}
+        mobs: {},
       },
       chat: {
         messages: 0,
-        commands: 0
-      }
+        commands: 0,
+      },
     };
   }
 
@@ -132,7 +140,11 @@ export class StatisticsUtils {
     return num.toString();
   }
 
-  static isSameLocation(loc1: Location, loc2: Location, tolerance: number = 3): boolean {
+  static isSameLocation(
+    loc1: Location,
+    loc2: Location,
+    tolerance: number = 3,
+  ): boolean {
     return (
       loc1.dimension === loc2.dimension &&
       Math.abs(loc1.x - loc2.x) <= tolerance &&
@@ -141,8 +153,13 @@ export class StatisticsUtils {
     );
   }
 
-  static updateDeathLocation(locations: DeathLocation[], newDeath: Location): void {
-    const existingLocation = locations.find(loc => this.isSameLocation(loc, newDeath));
+  static updateDeathLocation(
+    locations: DeathLocation[],
+    newDeath: Location,
+  ): void {
+    const existingLocation = locations.find((loc) =>
+      this.isSameLocation(loc, newDeath)
+    );
 
     if (existingLocation) {
       existingLocation.count++;
@@ -151,7 +168,7 @@ export class StatisticsUtils {
       locations.push({
         ...newDeath,
         count: 1,
-        lastDeath: Date.now()
+        lastDeath: Date.now(),
       });
     }
 
@@ -164,7 +181,7 @@ export class StatisticsUtils {
 
   static getTopStats<T extends Record<string, number>>(
     stats: T,
-    limit: number = 5
+    limit: number = 5,
   ): Array<[string, number]> {
     return Object.entries(stats)
       .sort(([, a], [, b]) => b - a)
@@ -176,7 +193,10 @@ export class StatisticsUtils {
     return (kills / deaths).toFixed(2);
   }
 
-  static mergeStats(target: Record<string, number>, source: Record<string, number>): void {
+  static mergeStats(
+    target: Record<string, number>,
+    source: Record<string, number>,
+  ): void {
     for (const [key, value] of Object.entries(source)) {
       target[key] = (target[key] || 0) + value;
     }

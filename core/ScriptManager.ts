@@ -7,17 +7,21 @@ import { Logger } from "./logger.ts";
 import { AuthService } from "./AuthService.ts";
 import { createMinecraftAPI } from "../api/minecraftAPI.ts";
 import { walk } from "https://deno.land/std@0.177.0/fs/mod.ts";
-import { dirname, fromFileUrl, resolve } from "https://deno.land/std@0.177.0/path/mod.ts";
+import {
+  dirname,
+  fromFileUrl,
+  resolve,
+} from "https://deno.land/std@0.177.0/path/mod.ts";
 import { RateLimiter } from "./RateLimiter.ts";
-import {createDisplayAPI} from "../api/displayAPI.ts";
+import { createDisplayAPI } from "../api/displayAPI.ts";
 import { ModuleWatcher } from "./ModuleWatcher.ts";
 import { PlayerManager } from "./PlayerManager.ts";
 import { RconManager } from "./RconManager.ts";
-import {RconClient} from "./RconClient.ts";
-import {WebSocketCommandHandler} from "./WebSocketCommandHandler.ts";
-import {createBlueMapAPI} from "../api/bluemapAPI.ts";
-import {CronManager} from "./CronManager.ts";
-import {createFilesAPI} from "../api/filesAPI.ts";
+import { RconClient } from "./RconClient.ts";
+import { WebSocketCommandHandler } from "./WebSocketCommandHandler.ts";
+import { createBlueMapAPI } from "../api/bluemapAPI.ts";
+import { CronManager } from "./CronManager.ts";
+import { createFilesAPI } from "../api/filesAPI.ts";
 
 interface CommandMetadata {
   name: string;
@@ -37,21 +41,26 @@ interface TellrawComponent {
   obfuscated?: boolean;
   insertion?: string;
   clickEvent?: {
-    action: 'open_url' | 'run_command' | 'suggest_command' | 'change_page' | 'copy_to_clipboard';
+    action:
+      | "open_url"
+      | "run_command"
+      | "suggest_command"
+      | "change_page"
+      | "copy_to_clipboard";
     value: string;
   };
   hoverEvent?: {
-    action: 'show_text' | 'show_item' | 'show_entity';
+    action: "show_text" | "show_item" | "show_entity";
     contents: string | object;
   };
   extra?: TellrawComponent[];
 }
 
 function extractTextFromComponent(component: TellrawComponent): string {
-  let text = component.text || '';
+  let text = component.text || "";
 
   if (component.extra) {
-    text += component.extra.map(extractTextFromComponent).join('');
+    text += component.extra.map(extractTextFromComponent).join("");
   }
 
   return text;
@@ -81,7 +90,7 @@ export class ScriptManager {
     kv: KvManager,
     logger: Logger,
     auth: AuthService,
-    rateLimiter: RateLimiter
+    rateLimiter: RateLimiter,
   ) {
     this.config = config;
     this.kv = kv;
@@ -93,12 +102,12 @@ export class ScriptManager {
     this.moduleWatcher = new ModuleWatcher(
       this,
       this.logger,
-      resolve(this.basePath, '../modules')
+      resolve(this.basePath, "../modules"),
     );
 
     this.wsCommandHandler = new WebSocketCommandHandler(
       this.logger,
-      config.get('COMMAND_TIMEOUT') as unknown as number || 5000
+      5000,
     );
 
     // Initialize the interpreter with our context factory
@@ -106,19 +115,19 @@ export class ScriptManager {
       this.logger,
       this.createContext.bind(this),
       this.kv.kv,
-      rateLimiter
+      rateLimiter,
     );
 
     this.rconManager = new RconManager(
       this.logger,
       this.auth,
-        Deno.env.get('RCON_HOST'),
-      25575
+      Deno.env.get("RCON_HOST"),
+      25575,
     );
   }
 
   async init(): Promise<void> {
-    this.logger.debug('ScriptManager initialized');
+    this.logger.debug("ScriptManager initialized");
     // await this.kv.set(['server', 'apps'], [])
     this.moduleWatcher.watch();
   }
@@ -131,21 +140,25 @@ export class ScriptManager {
       const moduleUrl = new URL(`file://${absolutePath}`).href;
       return await import(moduleUrl);
     } catch (error: any) {
-      this.logger.error(`Error importing module ${modulePath}: ${error.message}`);
+      this.logger.error(
+        `Error importing module ${modulePath}: ${error.message}`,
+      );
       throw error;
     }
   }
 
   async loadModules(): Promise<void> {
-    const modulesDir = resolve(this.basePath, '../modules');
-    this.logger.info('Loading modules from ' + modulesDir);
+    const modulesDir = resolve(this.basePath, "../modules");
+    this.logger.info("Loading modules from " + modulesDir);
 
     // Remove maxDepth to allow recursive directory traversal
-    for await (const entry of walk(modulesDir, {
-      includeDirs: false,
-      match: [/\.ts$/],
-      skip: [/node_modules/, /\.git/] // Skip certain directories
-    })) {
+    for await (
+      const entry of walk(modulesDir, {
+        includeDirs: false,
+        match: [/\.ts$/],
+        skip: [/node_modules/, /\.git/], // Skip certain directories
+      })
+    ) {
       await this.loadModule(entry.path);
     }
   }
@@ -155,10 +168,10 @@ export class ScriptManager {
   public async loadModule(modulePath: string): Promise<void> {
     try {
       // If the path starts with /app, remove it to make it relative
-      const cleanPath = modulePath.replace(/^\/app\//, '');
+      const cleanPath = modulePath.replace(/^\/app\//, "");
 
       // Get absolute path from the base directory
-      const absolutePath = resolve(this.basePath, '..', cleanPath);
+      const absolutePath = resolve(this.basePath, "..", cleanPath);
 
       // Check if the file exists before attempting to import
       try {
@@ -166,11 +179,16 @@ export class ScriptManager {
       } catch (error) {
         if (error instanceof Deno.errors.NotFound) {
           // File doesn't exist - extract module name and unload it
-          const modulesDir = resolve(this.basePath, '../modules');
-          const relativePath = absolutePath.replace(modulesDir + '/', '');
-          const moduleName = relativePath.replace(/\.ts$/, '').replace(/\//g, ':');
+          const modulesDir = resolve(this.basePath, "../modules");
+          const relativePath = absolutePath.replace(modulesDir + "/", "");
+          const moduleName = relativePath.replace(/\.ts$/, "").replace(
+            /\//g,
+            ":",
+          );
 
-          this.logger.info(`Module file ${modulePath} no longer exists, unloading module ${moduleName}`);
+          this.logger.info(
+            `Module file ${modulePath} no longer exists, unloading module ${moduleName}`,
+          );
           await this.interpreter.unloadModule(moduleName);
           return;
         }
@@ -178,30 +196,42 @@ export class ScriptManager {
       }
 
       // Get relative path from modules directory for module naming
-      const modulesDir = resolve(this.basePath, '../modules');
-      const relativePath = absolutePath.replace(modulesDir + '/', '');
+      const modulesDir = resolve(this.basePath, "../modules");
+      const relativePath = absolutePath.replace(modulesDir + "/", "");
 
       // Create proper file URL with cache busting
       const moduleUrl = new URL(`file://${absolutePath}`);
-      moduleUrl.searchParams.set('t', Date.now().toString());
+      moduleUrl.searchParams.set("t", Date.now().toString());
 
-      this.logger.debug(`Attempting to load module from: ${moduleUrl.href}`);
+      // this.logger.debug(`Attempting to load module from: ${moduleUrl.href}`);
 
       const moduleImport = await import(moduleUrl.href);
 
       // Pass the relative path to help with nested module naming
       await this.interpreter.loadModule(relativePath, moduleImport);
 
-      this.logger.debug(`Successfully loaded module from: ${moduleUrl.href}`);
+      // this.logger.debug(`Successfully loaded module from: ${moduleUrl.href}`);
     } catch (error) {
       this.logger.error(`Error loading module ${modulePath}: ${error.message}`);
       throw error;
     }
   }
 
-  async handleCommand(command: string, subcommand: string | undefined, args: unknown, sender: string, senderType: string): Promise<unknown> {
+  async handleCommand(
+    command: string,
+    subcommand: string | undefined,
+    args: unknown,
+    sender: string,
+    senderType: string,
+  ): Promise<unknown> {
     try {
-      return await this.interpreter.executeCommand(command, subcommand, args, sender, senderType);
+      return await this.interpreter.executeCommand(
+        command,
+        subcommand,
+        args,
+        sender,
+        senderType,
+      );
     } catch (error) {
       this.logger.error(`Error executing command: ${error.message}`);
     }
@@ -215,13 +245,19 @@ export class ScriptManager {
     }
   }
 
-  async handleSocket(socketType: string, sender: string | null, socket: WebSocket, data: unknown, messageId: string | null = null): Promise<void> {
+  async handleSocket(
+    socketType: string,
+    sender: string | null,
+    socket: WebSocket,
+    data: unknown,
+    messageId: string | null = null,
+  ): Promise<void> {
     try {
       const response = await this.interpreter.executeSocket(socketType, {
         ...data as object,
         socket,
         sender,
-        socketId: socket.url // or another unique identifier
+        socketId: socket.url, // or another unique identifier
       });
 
       const responsePayload = {
@@ -229,7 +265,7 @@ export class ScriptManager {
         success: true,
         data: response,
         messageId,
-        error: null
+        error: null,
       };
 
       await socket.send(JSON.stringify(responsePayload));
@@ -237,9 +273,11 @@ export class ScriptManager {
       const errorResponse = {
         type: socketType,
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: error instanceof Error
+          ? error.message
+          : "Unknown error occurred",
         messageId,
-        data: null
+        data: null,
       };
 
       await socket.send(JSON.stringify(errorResponse));
@@ -256,36 +294,39 @@ export class ScriptManager {
   } = {}): Promise<void> {
     // Default styling
     const {
-      color = 'white',
+      color = "white",
       bold = false,
       italic = false,
       underlined = false,
-      sound = 'entity.experience_orb.pickup'
+      sound = "entity.experience_orb.pickup",
     } = options;
 
     // Send socket message
     this.sendToPlayer(playerId, {
-      type: 'chat_message',
+      type: "chat_message",
       message,
       timestamp: Date.now(),
       metadata: {
         color,
         bold,
         italic,
-        underlined
-      }
+        underlined,
+      },
     });
 
     // Send Minecraft tellraw
-    const tellrawCommand = `tellraw ${playerId} {"text":"${message}","color":"${color}"${
-      bold ? ',"bold":true' : ''
-    }${italic ? ',"italic":true' : ''
-    }${underlined ? ',"underlined":true' : ''
-    }}`;
+    const tellrawCommand =
+      `tellraw ${playerId} {"text":"${message}","color":"${color}"${
+        bold ? ',"bold":true' : ""
+      }${italic ? ',"italic":true' : ""}${
+        underlined ? ',"underlined":true' : ""
+      }}`;
 
     // Play sound if specified
     if (sound) {
-      await this.executeCommand(`execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`);
+      await this.executeCommand(
+        `execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`,
+      );
     }
 
     // Execute the tellraw command
@@ -296,10 +337,13 @@ export class ScriptManager {
     this.playerManager = playerManager;
   }
 
-  private createContext(params: Record<string, unknown>, socket?: WebSocket): ScriptContext {
+  private createContext(
+    params: Record<string, unknown>,
+    socket?: WebSocket,
+  ): ScriptContext {
     const minecraftAPI = createMinecraftAPI(
       this.sendToMinecraft.bind(this),
-      this.logger.info.bind(this.logger)
+      this.logger.info.bind(this.logger),
     );
 
     const contextComponents: TellrawComponent[] = [];
@@ -307,17 +351,17 @@ export class ScriptManager {
     const displayApi = createDisplayAPI(
       this.sendToMinecraft.bind(this),
       this.logger.info.bind(this.logger),
-      this.kv.kv
+      this.kv.kv,
     );
 
     const filesAPI = createFilesAPI(
       this.sendToMinecraft.bind(this),
-      this.logger.info.bind(this.logger)
-    )
+      this.logger.info.bind(this.logger),
+    );
 
     const bluemapAPI = createBlueMapAPI(
       this.sendToMinecraft.bind(this),
-      this.logger.info.bind(this.logger)
+      this.logger.info.bind(this.logger),
     );
 
     // Get RCON client if available for this socket
@@ -329,7 +373,9 @@ export class ScriptManager {
         rconClient = connection.client;
       }
     } catch (error) {
-      this.logger.debug(`No RCON client available for socket: ${error.message}`);
+      this.logger.debug(
+        `No RCON client available for socket: ${error.message}`,
+      );
     }
 
     return {
@@ -344,7 +390,7 @@ export class ScriptManager {
         },
         execute: async (command: string) => {
           return await this.executeCommand(command);
-        }
+        },
       },
       display: {
         ...displayApi,
@@ -358,7 +404,10 @@ export class ScriptManager {
 
       files: filesAPI,
 
-      tellraw: async (target: string, message: string | TellrawComponent | TellrawComponent[]) => {
+      tellraw: async (
+        target: string,
+        message: string | TellrawComponent | TellrawComponent[],
+      ) => {
         // Helper to try parsing JSON string components
         const tryParseJSON = (str: string) => {
           try {
@@ -369,8 +418,10 @@ export class ScriptManager {
         };
 
         // If message is a string that looks like JSON
-        if (typeof message === 'string' &&
-          (message.startsWith('[{') || message.startsWith('{"'))) {
+        if (
+          typeof message === "string" &&
+          (message.startsWith("[{") || message.startsWith('{"'))
+        ) {
           const parsed = tryParseJSON(message);
           if (parsed) {
             if (Array.isArray(parsed)) {
@@ -378,9 +429,11 @@ export class ScriptManager {
             } else {
               contextComponents.push(parsed);
             }
-            contextComponents.push({ text: '\n' });
+            contextComponents.push({ text: "\n" });
 
-            const jsonMessage = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+            const jsonMessage = JSON.stringify(
+              Array.isArray(parsed) ? parsed : [parsed],
+            );
             await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
 
             return [...contextComponents];
@@ -390,7 +443,7 @@ export class ScriptManager {
         // If message is an array, spread it into contextComponents
         if (Array.isArray(message)) {
           contextComponents.push(...message);
-          contextComponents.push({ text: '\n' });
+          contextComponents.push({ text: "\n" });
 
           const jsonMessage = JSON.stringify(message);
           await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
@@ -399,9 +452,11 @@ export class ScriptManager {
         }
 
         // If message is a component with encoded JSON text
-        if (typeof message === 'object' && 'text' in message &&
-          typeof message.text === 'string' &&
-          (message.text.startsWith('[{') || message.text.startsWith('{"'))) {
+        if (
+          typeof message === "object" && "text" in message &&
+          typeof message.text === "string" &&
+          (message.text.startsWith("[{") || message.text.startsWith('{"'))
+        ) {
           const parsed = tryParseJSON(message.text);
           if (parsed) {
             if (Array.isArray(parsed)) {
@@ -409,9 +464,11 @@ export class ScriptManager {
             } else {
               contextComponents.push(parsed);
             }
-            contextComponents.push({ text: '\n' });
+            contextComponents.push({ text: "\n" });
 
-            const jsonMessage = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+            const jsonMessage = JSON.stringify(
+              Array.isArray(parsed) ? parsed : [parsed],
+            );
             await this.executeCommand(`tellraw ${target} ${jsonMessage}`);
 
             return [...contextComponents];
@@ -419,7 +476,7 @@ export class ScriptManager {
         }
 
         // Handle single component/string as before
-        const component: TellrawComponent = typeof message === 'string'
+        const component: TellrawComponent = typeof message === "string"
           ? { text: message }
           : message;
 
@@ -431,20 +488,20 @@ export class ScriptManager {
 
         // Send to WebSocket player
         this.sendToPlayer(target, {
-          type: 'chat_message',
+          type: "chat_message",
           message: component.text,
           timestamp: Date.now(),
           metadata: {
-            color: component.color || 'white',
+            color: component.color || "white",
             bold: component.bold || false,
             italic: component.italic || false,
-            underlined: component.underlined || false
-          }
+            underlined: component.underlined || false,
+          },
         });
 
         // Store the complete component
         contextComponents.push(component);
-        contextComponents.push({ text: '\n' });
+        contextComponents.push({ text: "\n" });
 
         return [...contextComponents];
       },
@@ -454,55 +511,77 @@ export class ScriptManager {
       // Player management and messaging
       players: {
         getAll: () => this.playerManager.getAllPlayers(),
-        isOnline: (playerName: string) => this.playerManager.isOnline(playerName),
-        isOperator: (playerName: string) => this.playerManager.isOperator(playerName),
-        sendWebSocket: (playerId: string, data: unknown) => this.sendToPlayer(playerId, data),
+        isOnline: (playerName: string) =>
+          this.playerManager.isOnline(playerName),
+        isOperator: (playerName: string) =>
+          this.playerManager.isOperator(playerName),
+        sendWebSocket: (playerId: string, data: unknown) =>
+          this.sendToPlayer(playerId, data),
         broadcastWebSocket: (data: unknown) => this.broadcastPlayers(data),
-        sendGameMessage: async (playerId: string, message: string, options = {}) => {
+        sendGameMessage: async (
+          playerId: string,
+          message: string,
+          options = {},
+        ) => {
           const {
-            color = 'white',
+            color = "white",
             bold = false,
             italic = false,
             underlined = false,
-            sound = 'entity.experience_orb.pickup'
+            sound = "entity.experience_orb.pickup",
           } = options;
 
           // Send WebSocket message for UI
           this.sendToPlayer(playerId, {
-            type: 'chat_message',
+            type: "chat_message",
             message,
             timestamp: Date.now(),
-            metadata: { color, bold, italic, underlined }
+            metadata: { color, bold, italic, underlined },
           });
 
           // Send in-game message
-          const tellrawCommand = `tellraw ${playerId} {"text":"${message}","color":"${color}"${
-            bold ? ',"bold":true' : ''
-          }${italic ? ',"italic":true' : ''
-          }${underlined ? ',"underlined":true' : ''
-          }}`;
+          const tellrawCommand =
+            `tellraw ${playerId} {"text":"${message}","color":"${color}"${
+              bold ? ',"bold":true' : ""
+            }${italic ? ',"italic":true' : ""}${
+              underlined ? ',"underlined":true' : ""
+            }}`;
 
           // Play sound if specified
           if (sound) {
-            await this.executeCommand(`execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`);
+            await this.executeCommand(
+              `execute at ${playerId} run playsound ${sound} master ${playerId} ~ ~ ~ 1 1`,
+            );
           }
 
           await this.executeCommand(tellrawCommand);
-        }
+        },
       },
 
       // Module execution
       modules: {
-        execute: this.executeModuleScript.bind(this)
+        execute: this.executeModuleScript.bind(this),
       },
-      getCommands: (permission: string) => this.getCommandsByPermission(permission),
-      handleCommand: async (data: { command: string; data: { subcommand: string; arguments: unknown; sender: string; senderType: string; }; }) => this.handleCommand(
-        data.command as string,
-        data.data?.subcommand as string,
-        data.data?.arguments,
-        data.data?.sender as string,
-        data.data?.senderType as string
-      ),
+      getCommands: (permission: string) =>
+        this.getCommandsByPermission(permission),
+      handleCommand: async (
+        data: {
+          command: string;
+          data: {
+            subcommand: string;
+            arguments: unknown;
+            sender: string;
+            senderType: string;
+          };
+        },
+      ) =>
+        this.handleCommand(
+          data.command as string,
+          data.data?.subcommand as string,
+          data.data?.arguments,
+          data.data?.sender as string,
+          data.data?.senderType as string,
+        ),
 
       //to be renamed and/or removed
       sendToMinecraft: this.sendToMinecraft.bind(this),
@@ -518,8 +597,16 @@ export class ScriptManager {
     };
   }
 
-  async executeModuleScript(moduleName: string, methodName: string, params: Record<string, unknown>): Promise<unknown> {
-    return await this.interpreter.executeModuleScript(moduleName, methodName, params);
+  async executeModuleScript(
+    moduleName: string,
+    methodName: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    return await this.interpreter.executeModuleScript(
+      moduleName,
+      methodName,
+      params,
+    );
   }
 
   addMinecraftSocket(socket: WebSocket, req: Request): void {
@@ -535,8 +622,8 @@ export class ScriptManager {
       const token = authHeader.split(" ")[1];
 
       if (!token) {
-        this.logger.error('No token provided in WebSocket connection');
-        socket.close(1008, 'No authentication token provided');
+        this.logger.error("No token provided in WebSocket connection");
+        socket.close(1008, "No authentication token provided");
         return;
       }
 
@@ -547,25 +634,29 @@ export class ScriptManager {
       this.wsCommandHandler.setSocket(socket);
 
       // Initialize RCON connection
-      this.rconManager.createConnection(socket, token).catch(error => {
+      this.rconManager.createConnection(socket, token).catch((error) => {
         this.logger.error(`Failed to create RCON connection: ${error.message}`);
         // Don't close the socket - RCON is optional
       });
 
       if (socket.readyState === WebSocket.OPEN) {
-        this.registerAllCommands().catch(error => {
-          this.logger.error(`Error registering commands after connection: ${error.message}`);
+        this.registerAllCommands().catch((error) => {
+          this.logger.error(
+            `Error registering commands after connection: ${error.message}`,
+          );
         });
       } else {
-        socket.addEventListener('open', () => {
-          this.registerAllCommands().catch(error => {
-            this.logger.error(`Error registering commands after connection: ${error.message}`);
+        socket.addEventListener("open", () => {
+          this.registerAllCommands().catch((error) => {
+            this.logger.error(
+              `Error registering commands after connection: ${error.message}`,
+            );
           });
         });
       }
     } catch (error) {
       this.logger.error(`Error adding Minecraft socket: ${error.message}`);
-      socket.close(1011, 'Internal server error');
+      socket.close(1011, "Internal server error");
     }
   }
 
@@ -591,15 +682,13 @@ export class ScriptManager {
 
   private getHealthySocket(): WebSocket | null {
     return Array.from(this.minecraftSockets)
-      .find(socket =>
-        socket.readyState === WebSocket.OPEN
-      ) || null;
+      .find((socket) => socket.readyState === WebSocket.OPEN) || null;
   }
 
   private async sendToMinecraft(data: unknown): Promise<unknown> {
     const socket = this.getHealthySocket();
     if (!socket) {
-      throw new Error('No healthy Minecraft WebSocket connections available');
+      throw new Error("No healthy Minecraft WebSocket connections available");
     }
 
     try {
@@ -620,7 +709,9 @@ export class ScriptManager {
           this.logger.warn(`Removed dead socket for player ${playerId}`);
         }
       } catch (error) {
-        this.logger.error(`Failed to send message to player ${playerId}: ${error}`);
+        this.logger.error(
+          `Failed to send message to player ${playerId}: ${error}`,
+        );
         this.playerSockets.delete(playerId);
       }
     });
@@ -648,28 +739,35 @@ export class ScriptManager {
     }
   }
 
-  async handleMessage(data: Record<string, unknown>, _type: 'minecraft' | 'fresh'): Promise<Record<string, unknown>> {
-    if (data.id && this.wsCommandHandler.handleResponse(data.id as string, data)) {
+  async handleMessage(
+    data: Record<string, unknown>,
+    _type: "minecraft" | "fresh",
+  ): Promise<Record<string, unknown>> {
+    if (
+      data.id && this.wsCommandHandler.handleResponse(data.id as string, data)
+    ) {
       return {}; // Response was handled
     }
 
     switch (data.type) {
-      case 'custom_command_executed':
+      case "custom_command_executed":
         // Commands can now run truly in parallel
         this.handleCommand(
           data.command as string,
           data.data?.subcommand as string,
           data.data?.arguments,
           data.data?.sender as string,
-          data.data?.senderType as string
-        ).catch(error => {
+          data.data?.senderType as string,
+        ).catch((error) => {
           this.logger.error(`Error handling command: ${error}`);
         });
         return {};
-      case 'command':
+      case "command":
         return { result: await this.executeCommand(data.data as string) };
-      case 'register_command':
-        return { result: await this.registerCommand(data.data as CommandMetadata) };
+      case "register_command":
+        return {
+          result: await this.registerCommand(data.data as CommandMetadata),
+        };
       default:
         this.logger.warn(`Unknown message type: ${JSON.stringify(data)}`);
         return { error: `Unknown message type: ${data.type}` };
@@ -680,9 +778,10 @@ export class ScriptManager {
     try {
       const response = await this.sendToMinecraft({
         type: "command",
-        data: command
+        data: command,
       });
-      return (response as { result: string }).result || JSON.stringify(response);
+      return (response as { result: string }).result ||
+        JSON.stringify(response);
     } catch (error) {
       this.logger.error(`Error executing command: ${(error as Error).message}`);
       throw error;
@@ -706,7 +805,7 @@ export class ScriptManager {
           usage: command.usage,
           permissions: command.permissions,
           arguments: command.arguments,
-          subcommands: []
+          subcommands: [],
         });
       } else {
         // This is a subcommand
@@ -718,7 +817,7 @@ export class ScriptManager {
             description: "Root command",
             usage: "",
             permissions: ["player"],
-            subcommands: []
+            subcommands: [],
           };
           rootCommands.set(rootCommandName, rootCommand);
         }
@@ -729,7 +828,7 @@ export class ScriptManager {
           description: command.description,
           usage: command.usage,
           permissions: command.permissions,
-          arguments: command.arguments
+          arguments: command.arguments,
         };
 
         rootCommand.subcommands = rootCommand.subcommands || [];
@@ -737,23 +836,23 @@ export class ScriptManager {
       }
     }
 
-    this.logger.info(`Registering ${rootCommands.size} commands...`);
+    this.logger.info(`Registering ${rootCommands.size} base commands...`);
 
     // Register each root command with its subcommands
     for (const rootCommand of rootCommands.values()) {
       await this.registerCommand(rootCommand);
     }
 
-    this.logger.debug('All commands registered successfully.');
+    this.logger.debug("All commands registered successfully.");
   }
 
   private async registerCommand(commandData: CommandMetadata): Promise<void> {
     try {
       const openSocket = Array.from(this.minecraftSockets)
-        .find(socket => socket.readyState === WebSocket.OPEN);
+        .find((socket) => socket.readyState === WebSocket.OPEN);
 
       if (!openSocket) {
-        throw new Error('No open WebSocket connections available');
+        throw new Error("No open WebSocket connections available");
       }
 
       // Create the command registration payload
@@ -763,17 +862,23 @@ export class ScriptManager {
         usage: commandData.usage,
         permissions: commandData.permissions,
         arguments: commandData.arguments,
-        subcommands: commandData.subcommands || []
+        subcommands: commandData.subcommands || [],
       };
 
       await this.sendToMinecraft({
         type: "register_command",
-        data: registrationData
+        data: registrationData,
       });
 
-      this.logger.debug(`Command "${commandData.name}" registered successfully`);
+      this.logger.debug(
+        `Command "${commandData.name}" "${commandData.description}" registered.`,
+      );
     } catch (error) {
-      this.logger.error(`Error registering command "${commandData.name}": ${(error as Error).message}`);
+      this.logger.error(
+        `Error registering command "${commandData.name}": ${
+          (error as Error).message
+        }`,
+      );
     }
   }
 

@@ -1,5 +1,5 @@
-import { Module, Socket, Permission } from '../decorators.ts';
-import { ScriptContext } from '../types.ts';
+import { Module, Permission, Socket } from "../decorators.ts";
+import { ScriptContext } from "../types.ts";
 
 interface KvListOptions {
   prefix?: unknown[];
@@ -16,32 +16,32 @@ interface KvEntry {
 }
 
 @Module({
-  name: 'KvHelper',
-  version: '1.0.1'
+  name: "KvHelper",
+  version: "1.0.1",
 })
 export class KvHelper {
   private serializeValue(value: unknown): unknown {
     if (value instanceof Deno.KvU64) {
       return {
-        type: 'KvU64',
-        value: value.value.toString()
+        type: "KvU64",
+        value: value.value.toString(),
       };
     }
 
-    if (typeof value === 'bigint') {
+    if (typeof value === "bigint") {
       return {
-        type: 'BigInt',
-        value: value.toString()
+        type: "BigInt",
+        value: value.toString(),
       };
     }
 
     if (Array.isArray(value)) {
-      return value.map(v => this.serializeValue(v));
+      return value.map((v) => this.serializeValue(v));
     }
 
-    if (value && typeof value === 'object') {
+    if (value && typeof value === "object") {
       return Object.fromEntries(
-        Object.entries(value).map(([k, v]) => [k, this.serializeValue(v)])
+        Object.entries(value).map(([k, v]) => [k, this.serializeValue(v)]),
       );
     }
 
@@ -49,31 +49,31 @@ export class KvHelper {
   }
 
   private deserializeValue(value: unknown): unknown {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
       const obj = value as Record<string, unknown>;
 
-      if (obj.type === 'KvU64' && typeof obj.value === 'string') {
+      if (obj.type === "KvU64" && typeof obj.value === "string") {
         return new Deno.KvU64(BigInt(obj.value));
       }
 
-      if (obj.type === 'BigInt' && typeof obj.value === 'string') {
+      if (obj.type === "BigInt" && typeof obj.value === "string") {
         return BigInt(obj.value);
       }
 
       return Object.fromEntries(
-        Object.entries(obj).map(([k, v]) => [k, this.deserializeValue(v)])
+        Object.entries(obj).map(([k, v]) => [k, this.deserializeValue(v)]),
       );
     }
 
     if (Array.isArray(value)) {
-      return value.map(v => this.deserializeValue(v));
+      return value.map((v) => this.deserializeValue(v));
     }
 
     return value;
   }
 
-  @Socket('kv_list_layer')
-  @Permission('operator')
+  @Socket("kv_list_layer")
+  @Permission("operator")
   async handleListLayer({ params, log, kv }: ScriptContext): Promise<{
     keys: string[];
     hasChildren: boolean[];
@@ -96,7 +96,7 @@ export class KvHelper {
       }
 
       const keys = Array.from(uniqueKeys.keys()).sort();
-      const hasChildren = keys.map(key => uniqueKeys.get(key) || false);
+      const hasChildren = keys.map((key) => uniqueKeys.get(key) || false);
 
       log(`Listed KV layer at prefix: ${JSON.stringify(prefixArray)}`);
       return { keys, hasChildren };
@@ -106,8 +106,8 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_get_data')
-  @Permission('operator')
+  @Socket("kv_get_data")
+  @Permission("operator")
   async handleGetData({ params, log, kv }: ScriptContext): Promise<{
     entries: KvEntry[];
     hasMore: boolean;
@@ -124,9 +124,9 @@ export class KvHelper {
             entries: [{
               key: prefixArray,
               value: this.serializeValue(directValue.value),
-              versionstamp: directValue.versionstamp
+              versionstamp: directValue.versionstamp,
             }],
-            hasMore: false
+            hasMore: false,
           };
         }
       }
@@ -134,7 +134,7 @@ export class KvHelper {
       // If no direct value, list all entries under this prefix
       const options: Deno.KvListOptions = {
         prefix: prefixArray,
-        limit: 1000
+        limit: 1000,
       };
 
       const entries: KvEntry[] = [];
@@ -143,16 +143,20 @@ export class KvHelper {
 
       for await (const entry of iterator) {
         const key = entry.key as string[];
-        if (key.length === prefixArray.length + 1) {  // Only get immediate children
+        if (key.length === prefixArray.length + 1) { // Only get immediate children
           entries.push({
             key: entry.key,
             value: this.serializeValue(entry.value),
-            versionstamp: entry.versionstamp
+            versionstamp: entry.versionstamp,
           });
         }
       }
 
-      log(`Got KV data at prefix: ${JSON.stringify(prefixArray)}, found ${entries.length} entries`);
+      log(
+        `Got KV data at prefix: ${
+          JSON.stringify(prefixArray)
+        }, found ${entries.length} entries`,
+      );
       return { entries, hasMore };
     } catch (error) {
       log(`Error getting KV data: ${error.message}`);
@@ -160,9 +164,11 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_set')
-  @Permission('operator')
-  async handleSet({ params, log, kv }: ScriptContext): Promise<{ ok: boolean; versionstamp?: string }> {
+  @Socket("kv_set")
+  @Permission("operator")
+  async handleSet(
+    { params, log, kv }: ScriptContext,
+  ): Promise<{ ok: boolean; versionstamp?: string }> {
     try {
       const { key, value, expireIn } = params;
       const keyArray = Array.isArray(key) ? key : [key];
@@ -182,8 +188,8 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_get')
-  @Permission('operator')
+  @Socket("kv_get")
+  @Permission("operator")
   async handleGet({ params, log, kv }: ScriptContext): Promise<{
     value: unknown;
     versionstamp: string | null;
@@ -198,7 +204,7 @@ export class KvHelper {
       return {
         value: this.serializeValue(result.value),
         versionstamp: result.versionstamp,
-        exists: result.value !== null
+        exists: result.value !== null,
       };
     } catch (error) {
       log(`Error getting KV: ${error.message}`);
@@ -206,9 +212,11 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_delete')
-  @Permission('operator')
-  async handleDelete({ params, log, kv }: ScriptContext): Promise<{ ok: boolean }> {
+  @Socket("kv_delete")
+  @Permission("operator")
+  async handleDelete(
+    { params, log, kv }: ScriptContext,
+  ): Promise<{ ok: boolean }> {
     try {
       const { key } = params;
       const keyArray = Array.isArray(key) ? key : [key];
@@ -221,9 +229,11 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_delete_all')
-  @Permission('operator')
-  async handleDeleteAll({ params, log, kv }: ScriptContext): Promise<{ count: number }> {
+  @Socket("kv_delete_all")
+  @Permission("operator")
+  async handleDeleteAll(
+    { params, log, kv }: ScriptContext,
+  ): Promise<{ count: number }> {
     try {
       const { prefix } = params;
       const prefixArray = Array.isArray(prefix) ? prefix : [prefix];
@@ -235,7 +245,11 @@ export class KvHelper {
         count++;
       }
 
-      log(`Deleted ${count} KV entries with prefix: ${JSON.stringify(prefixArray)}`);
+      log(
+        `Deleted ${count} KV entries with prefix: ${
+          JSON.stringify(prefixArray)
+        }`,
+      );
       return { count };
     } catch (error) {
       log(`Error deleting KV entries: ${error.message}`);
@@ -243,8 +257,8 @@ export class KvHelper {
     }
   }
 
-  @Socket('kv_atomic')
-  @Permission('operator')
+  @Socket("kv_atomic")
+  @Permission("operator")
   async handleAtomicOperation({ params, log, kv }: ScriptContext): Promise<{
     ok: boolean;
     versionstamp?: string;
@@ -255,49 +269,49 @@ export class KvHelper {
 
       for (const op of operations) {
         switch (op.type) {
-          case 'check':
+          case "check":
             atomic = atomic.check({
               key: op.key,
-              versionstamp: op.versionstamp
+              versionstamp: op.versionstamp,
             });
             break;
 
-          case 'set':
+          case "set":
             atomic = atomic.set(op.key, this.deserializeValue(op.value));
             break;
 
-          case 'delete':
+          case "delete":
             atomic = atomic.delete(op.key);
             break;
 
-          case 'sum':
+          case "sum":
             atomic = atomic.mutate({
               type: "sum",
               key: op.key,
-              value: new Deno.KvU64(BigInt(op.value))
+              value: new Deno.KvU64(BigInt(op.value)),
             });
             break;
 
-          case 'min':
+          case "min":
             atomic = atomic.mutate({
               type: "min",
               key: op.key,
-              value: new Deno.KvU64(BigInt(op.value))
+              value: new Deno.KvU64(BigInt(op.value)),
             });
             break;
 
-          case 'max':
+          case "max":
             atomic = atomic.mutate({
               type: "max",
               key: op.key,
-              value: new Deno.KvU64(BigInt(op.value))
+              value: new Deno.KvU64(BigInt(op.value)),
             });
             break;
         }
       }
 
       const result = await atomic.commit();
-      log('Atomic transaction completed');
+      log("Atomic transaction completed");
       return result;
     } catch (error) {
       log(`Error in atomic transaction: ${error.message}`);

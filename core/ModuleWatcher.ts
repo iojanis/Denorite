@@ -2,6 +2,7 @@ import { relative } from "https://deno.land/std@0.177.0/path/mod.ts";
 import { encodeHex } from "jsr:@std/encoding/hex";
 import type { ScriptManager } from "./ScriptManager.ts";
 import type { Logger } from "./logger.ts";
+import { ModuleDocumentGenerator } from "./ModuleDocumentGenerator.ts";
 
 interface AppMetadata {
   title: string;
@@ -28,11 +29,13 @@ export class ModuleWatcher {
   private watchDir: string;
   private recentlyLoaded: Map<string, number> = new Map();
   private debounceTime = 1000; // 1 second debounce
+  private docGenerator: ModuleDocumentGenerator;
 
   constructor(scriptManager: ScriptManager, logger: Logger, watchDir: string) {
     this.scriptManager = scriptManager;
     this.logger = logger;
     this.watchDir = watchDir;
+    this.docGenerator = new ModuleDocumentGenerator(watchDir);
   }
 
   private isRecentlyLoaded(path: string): boolean {
@@ -51,7 +54,9 @@ export class ModuleWatcher {
     this.recentlyLoaded.set(path, Date.now());
   }
 
-  private async extractAppMetadata(content: string): Promise<AppMetadata | null> {
+  private async extractAppMetadata(
+    content: string,
+  ): Promise<AppMetadata | null> {
     const metadataMatch = content.match(/@app\s*({[\s\S]*?})/);
     if (!metadataMatch) return null;
 
@@ -72,40 +77,8 @@ export class ModuleWatcher {
   private async verifyApps() {
     try {
       // Get current apps from KV
-      const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
+      const apps = await this.scriptManager.kv.get(["server", "apps"]) || [];
       const validApps: AppRegistration[] = [];
-      // const removedApps: AppRegistration[] = [];
-
-      // // Check each app's file existence
-      // for (const app of apps) {
-      //   try {
-      //     await Deno.stat(app.path);
-      //     validApps.push(app);
-      //   } catch (error) {
-      //     if (error instanceof Deno.errors.NotFound) {
-      //       removedApps.push(app);
-      //       this.logger.info(`App file not found, removing: ${app.name}`);
-      //     } else {
-      //       this.logger.error(`Error checking app file ${app.path}: ${error}`);
-      //       // Keep app in case of temporary filesystem issues
-      //       validApps.push(app);
-      //     }
-      //   }
-      // }
-
-      // // Update KV if any apps were removed
-      // if (removedApps.length > 0) {
-      //   await this.scriptManager.kv.set(['server', 'apps'], validApps);
-      //
-      //   // Notify clients about removed apps
-      //   for (const app of removedApps) {
-      //     this.scriptManager.broadcastPlayers({
-      //       type: 'app_removed',
-      //       appName: app.name,
-      //       reason: 'file_not_found'
-      //     });
-      //   }
-      // }
 
       return apps;
     } catch (error) {
@@ -117,83 +90,100 @@ export class ModuleWatcher {
   private async registerVueApp(path: string, content: string) {
     const metadata = await this.extractAppMetadata(content);
     if (!metadata) return;
-    // console.dir(metadata)
 
     const checksum = await this.calculateChecksum(content);
     const registration: AppRegistration = {
       ...metadata,
       checksum,
       updatedAt: Date.now(),
-      path
+      path,
     };
 
     // Get existing apps and verify them first
     await this.verifyApps();
-    const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
+    const apps = await this.scriptManager.kv.get(["server", "apps"]) || [];
 
     // Find if app already exists
-    const existingIndex = apps.findIndex((app: AppRegistration) => app.name === metadata.name);
+    const existingIndex = apps.findIndex((app: AppRegistration) =>
+      app.name === metadata.name
+    );
     const isNew = existingIndex === -1;
 
     if (isNew) {
       apps.push(registration);
     } else {
       apps[existingIndex] = registration;
-      // Only update if content has changed
-      // if (apps[existingIndex].checksum !== checksum) {
-      //   apps[existingIndex] = registration;
-      // } else {
-      //   // Skip if no changes
-      //   return;
-      // }
     }
 
     // Update apps in KV store
-    await this.scriptManager.kv.set(['server', 'apps'], apps);
+    await this.scriptManager.kv.set(["server", "apps"], apps);
 
     // Broadcast update to all connected players
     const broadcastData = {
-      type: 'app_update',
+      type: "app_update",
       app: registration,
       isNew,
-      code: isNew ? content : undefined
+      code: isNew ? content : undefined,
     };
 
     this.scriptManager.broadcastPlayers(broadcastData);
-    this.logger.info(`${isNew ? 'Registered' : 'Updated'} App: ${metadata.name}`);
+    this.logger.info(
+      `${isNew ? "Registered" : "Updated"} App: ${metadata.name}`,
+    );
+  }
+
+  private async generateAndSaveDocumentation(): Promise<void> {
+    try {
+      const documentation = await this.docGenerator.generateDocumentation();
+      const docsPath = `${this.watchDir}/documentation.md`;
+      await Deno.writeTextFile(docsPath, documentation);
+      this.logger.info(`Generated module documentation at ${docsPath}`);
+    } catch (error) {
+      this.logger.error(`Failed to generate documentation: ${error}`);
+    }
   }
 
   async watch() {
     try {
-      // Initial verification
+      // Initial verification and documentation generation
       await this.verifyApps();
+      // await this.generateAndSaveDocumentation();
 
       const watcher = Deno.watchFs(this.watchDir, { recursive: true });
 
       for await (const event of watcher) {
         if (event.kind === "modify" || event.kind === "remove") {
+          let shouldRegenerateDocumentation = false;
+
           for (const path of event.paths) {
-            if (path.endsWith('.ts')) {
+            if (path.endsWith(".ts")) {
               // Clean the path
-              const cleanPath = path.replace(/^\/app\//, '');
+              const cleanPath = path.replace(/^\/app\//, "");
 
               // Skip if recently loaded
               if (this.isRecentlyLoaded(cleanPath)) {
-                // this.logger.debug(`Skipping reload of recently loaded module: ${cleanPath}`);
                 continue;
               }
 
               // Add small delay to ensure file write is complete
-              await new Promise(resolve => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, 100));
 
               try {
                 this.markAsLoaded(cleanPath);
                 await this.scriptManager.loadModule(cleanPath);
                 this.logger.info(`Reloaded module: ${cleanPath}`);
+                shouldRegenerateDocumentation = true;
               } catch (error) {
-                this.logger.error(`Failed to reload module ${cleanPath}: ${error}`);
+                this.logger.error(
+                  `Failed to reload module ${cleanPath}: ${error}`,
+                );
               }
             }
+          }
+
+          // Regenerate documentation if any TypeScript files were modified
+          if (shouldRegenerateDocumentation) {
+            // await this.generateAndSaveDocumentation();
           }
         }
       }
@@ -202,7 +192,9 @@ export class ModuleWatcher {
     }
   }
 
-  async handleAppListRequest(permission: 'guest' | 'player' | 'operator'): Promise<AppRegistration[]> {
+  async handleAppListRequest(
+    permission: "guest" | "player" | "operator",
+  ): Promise<AppRegistration[]> {
     // Verify apps before returning list
     const validApps = await this.verifyApps();
     if (!validApps) return [];
@@ -210,12 +202,12 @@ export class ModuleWatcher {
     return validApps
       .filter((app: AppRegistration) => {
         switch (permission) {
-          case 'operator':
+          case "operator":
             return true;
-          case 'player':
-            return app.permission === 'player' || app.permission === 'guest';
-          case 'guest':
-            return app.permission === 'guest';
+          case "player":
+            return app.permission === "player" || app.permission === "guest";
+          case "guest":
+            return app.permission === "guest";
           default:
             return false;
         }
@@ -237,13 +229,16 @@ export class ModuleWatcher {
       }));
   }
 
-  async handleAppCodeRequest(appNames: string[], permission: 'guest' | 'player' | 'operator'): Promise<{
+  async handleAppCodeRequest(
+    appNames: string[],
+    permission: "guest" | "player" | "operator",
+  ): Promise<{
     result: any;
-    names: string[]
+    names: string[];
   }> {
     // Verify apps before handling request
     await this.verifyApps();
-    const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
+    const apps = await this.scriptManager.kv.get(["server", "apps"]) || [];
     const result: Record<string, string> = {};
 
     for (const appName of appNames) {
@@ -255,7 +250,7 @@ export class ModuleWatcher {
 
         try {
           const content = await Deno.readTextFile(app.path);
-          result[appName] = {app, content};
+          result[appName] = { app, content };
         } catch (error) {
           // this.logger.error(`Failed to read app code for ${appName}: ${error}`); // or it's an inbuilt app
         }
@@ -265,13 +260,17 @@ export class ModuleWatcher {
     return result;
   }
 
-  private hasPermission(userPermission: string, requiredPermission: string): boolean {
+  private hasPermission(
+    userPermission: string,
+    requiredPermission: string,
+  ): boolean {
     const permissionLevels = {
-      'guest': 0,
-      'player': 1,
-      'operator': 2
+      "guest": 0,
+      "player": 1,
+      "operator": 2,
     };
 
-    return permissionLevels[userPermission] >= permissionLevels[requiredPermission];
+    return permissionLevels[userPermission] >=
+      permissionLevels[requiredPermission];
   }
 }

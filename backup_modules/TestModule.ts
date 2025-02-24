@@ -1,9 +1,9 @@
-import { Module, Event } from "../decorators.ts";
+import { Event, Module } from "../decorators.ts";
 import type { ScriptContext } from "../types.ts";
 
 @Module({
   name: "denorite-test-module",
-  version: "1.0.0"
+  version: "1.0.0",
 })
 export class DenoriteTestModule {
   // Server Events
@@ -51,7 +51,9 @@ export class DenoriteTestModule {
   @Event("player_joined")
   onPlayerJoined(context: ScriptContext) {
     const { playerId, playerName, x, y, z, dimension } = context.params;
-    console.log(`Player ${playerName} joined at ${x}, ${y}, ${z} in ${dimension}`);
+    console.log(
+      `Player ${playerName} joined at ${x}, ${y}, ${z} in ${dimension}`,
+    );
   }
 
   @Event("player_left")
@@ -62,14 +64,17 @@ export class DenoriteTestModule {
 
   @Event("player_death")
   onPlayerDeath(context: ScriptContext) {
-    const { playerId, playerName, deathMessage, attackerId, attackerType } = context.params;
+    const { playerId, playerName, deathMessage, attackerId, attackerType } =
+      context.params;
     console.log(`Player ${playerName} died: ${deathMessage}`);
   }
 
   @Event("player_respawned")
   onPlayerRespawn(context: ScriptContext) {
     const { playerId, playerName, alive, x, y, z, dimension } = context.params;
-    console.log(`Player ${playerName} respawned at ${x}, ${y}, ${z} in ${dimension}`);
+    console.log(
+      `Player ${playerName} respawned at ${x}, ${y}, ${z} in ${dimension}`,
+    );
   }
 
   @Event("player_chat")
@@ -106,7 +111,8 @@ export class DenoriteTestModule {
   // Container Events
   @Event("container_interaction_start")
   onContainerStart(context: ScriptContext) {
-    const { playerId, playerName, blockType, x, y, z, dimension } = context.params;
+    const { playerId, playerName, blockType, x, y, z, dimension } =
+      context.params;
     console.log(`${playerName} opened ${blockType} at ${x}, ${y}, ${z}`);
   }
 
@@ -125,7 +131,8 @@ export class DenoriteTestModule {
 
   @Event("entity_changed_world")
   onEntityWorldChange(context: ScriptContext) {
-    const { entityId, entityType, originalWorld, newWorld, x, y, z } = context.params;
+    const { entityId, entityType, originalWorld, newWorld, x, y, z } =
+      context.params;
     console.log(`${entityType} changed from ${originalWorld} to ${newWorld}`);
   }
 
@@ -185,7 +192,9 @@ export class DenoriteTestModule {
   @Event("merchant_interaction")
   onMerchantInteraction(context: ScriptContext) {
     const { playerId, merchantId, merchantType } = context.params;
-    console.log(`Player ${playerId} interacting with ${merchantId} ${merchantType}`);
+    console.log(
+      `Player ${playerId} interacting with ${merchantId} ${merchantType}`,
+    );
   }
 
   // Weather Events

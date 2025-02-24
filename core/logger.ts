@@ -38,10 +38,15 @@ export class Logger {
     this.log(LogLevel.ERROR, message, ...args);
   }
 
-  getLogEntries(_limit: number = 100, _level: LogLevel = LogLevel.DEBUG): Promise<string[]> {
+  getLogEntries(
+    _limit: number = 100,
+    _level: LogLevel = LogLevel.DEBUG,
+  ): Promise<string[]> {
     // This is a placeholder implementation. In a real-world scenario,
     // you might want to store logs in a file or database and retrieve them from there.
-    console.warn("getLogEntries is not implemented. It's a placeholder method.");
+    console.warn(
+      "getLogEntries is not implemented. It's a placeholder method.",
+    );
     return Promise.resolve(["Log entry 1", "Log entry 2", "Log entry 3"]);
   }
 }

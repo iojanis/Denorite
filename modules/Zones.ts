@@ -1,13 +1,13 @@
 import {
-  Module,
+  Argument,
   Command,
   Description,
+  Event,
+  Module,
   Permission,
   Socket,
-  Argument,
-  Event,
 } from "../decorators.ts";
-import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import { alert, button, container, divider, text } from "../tellraw-ui.ts";
 import type { ScriptContext } from "../types.ts";
 
 interface Position {
@@ -182,12 +182,20 @@ export class Zones {
     try {
       // Create text displays using RCON
       await rcon.executeCommand(
-        `summon text_display ${coords.centerX} ${coords.centerY + 3} ${coords.centerZ} {text:'${JSON.stringify(name)}',background:0,transformation:{translation:[0f,0f,0f],scale:[2f,2f,2f]},billboard:"center"}`,
+        `summon text_display ${coords.centerX} ${
+          coords.centerY + 3
+        } ${coords.centerZ} {text:'${
+          JSON.stringify(name)
+        }',background:0,transformation:{translation:[0f,0f,0f],scale:[2f,2f,2f]},billboard:"center"}`,
       );
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       await rcon.executeCommand(
-        `summon text_display ${coords.centerX} ${coords.centerY + 2} ${coords.centerZ} {text:'${JSON.stringify(description)}',background:0,transformation:{translation:[0f,0f,0f],scale:[1f,1f,1f]},billboard:"center"}`,
+        `summon text_display ${coords.centerX} ${
+          coords.centerY + 2
+        } ${coords.centerZ} {text:'${
+          JSON.stringify(description)
+        }',background:0,transformation:{translation:[0f,0f,0f],scale:[1f,1f,1f]},billboard:"center"}`,
       );
 
       // Add glowing armor stand as central marker
@@ -268,7 +276,9 @@ export class Zones {
         `setblock ${coords.centerX} ${coords.centerY} ${coords.centerZ} air`,
       );
       await rcon.executeCommand(
-        `setblock ${coords.centerX} ${coords.centerY + 1} ${coords.centerZ} air`,
+        `setblock ${coords.centerX} ${
+          coords.centerY + 1
+        } ${coords.centerZ} air`,
       );
 
       // Remove text displays and armor stands
@@ -291,49 +301,74 @@ export class Zones {
         x: coords.point2X + 128,
         y: 0,
         z: coords.point2Z + 128,
-        cmd: `gamemode survival @a[x=${coords.point2X + 4},y=${this.WORLD_MIN_Y},z=${coords.point2Z + 4},dx=247,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=247,gamemode=adventure,team=${teamId}]`,
+        cmd: `gamemode survival @a[x=${
+          coords.point2X + 4
+        },y=${this.WORLD_MIN_Y},z=${coords.point2Z + 4},dx=247,dy=${
+          this.WORLD_MAX_Y - this.WORLD_MIN_Y
+        },dz=247,gamemode=adventure,team=${teamId}]`,
       },
       {
         // North border
         x: coords.point2X + 128,
         y: 0,
         z: coords.point2Z + 127,
-        cmd: `gamemode survival @a[x=${coords.point2X},y=${this.WORLD_MIN_Y},z=${coords.point2Z},dx=250,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=2,gamemode=adventure,team=!${teamId}]`,
+        cmd:
+          `gamemode survival @a[x=${coords.point2X},y=${this.WORLD_MIN_Y},z=${coords.point2Z},dx=250,dy=${
+            this.WORLD_MAX_Y - this.WORLD_MIN_Y
+          },dz=2,gamemode=adventure,team=!${teamId}]`,
       },
       {
         // East border
         x: coords.point2X + 129,
         y: 0,
         z: coords.point2Z + 128,
-        cmd: `gamemode survival @a[x=${coords.point1X - 3},y=${this.WORLD_MIN_Y},z=${coords.point1Z},dx=2,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=250,gamemode=adventure,team=!${teamId}]`,
+        cmd: `gamemode survival @a[x=${
+          coords.point1X - 3
+        },y=${this.WORLD_MIN_Y},z=${coords.point1Z},dx=2,dy=${
+          this.WORLD_MAX_Y - this.WORLD_MIN_Y
+        },dz=250,gamemode=adventure,team=!${teamId}]`,
       },
       {
         // South border
         x: coords.point2X + 128,
         y: 0,
         z: coords.point2Z + 129,
-        cmd: `gamemode survival @a[x=${coords.point3X + 3},y=${this.WORLD_MIN_Y},z=${coords.point3Z - 3},dx=250,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=2,gamemode=adventure,team=!${teamId}]`,
+        cmd: `gamemode survival @a[x=${
+          coords.point3X + 3
+        },y=${this.WORLD_MIN_Y},z=${coords.point3Z - 3},dx=250,dy=${
+          this.WORLD_MAX_Y - this.WORLD_MIN_Y
+        },dz=2,gamemode=adventure,team=!${teamId}]`,
       },
       {
         // West border
         x: coords.point2X + 127,
         y: 0,
         z: coords.point2Z + 128,
-        cmd: `gamemode survival @a[x=${coords.point2X},y=${this.WORLD_MIN_Y},z=${coords.point2Z + 3},dx=2,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=250,gamemode=adventure,team=!${teamId}]`,
+        cmd:
+          `gamemode survival @a[x=${coords.point2X},y=${this.WORLD_MIN_Y},z=${
+            coords.point2Z + 3
+          },dx=2,dy=${
+            this.WORLD_MAX_Y - this.WORLD_MIN_Y
+          },dz=250,gamemode=adventure,team=!${teamId}]`,
       },
       {
         // Center - Non-team members adventure mode
         x: coords.point2X + 128,
         y: 1,
         z: coords.point2Z + 128,
-        cmd: `gamemode adventure @a[x=${coords.point2X + 4},y=${this.WORLD_MIN_Y},z=${coords.point2Z + 4},dx=247,dy=${this.WORLD_MAX_Y - this.WORLD_MIN_Y},dz=247,gamemode=survival,team=!${teamId}]`,
+        cmd: `gamemode adventure @a[x=${
+          coords.point2X + 4
+        },y=${this.WORLD_MIN_Y},z=${coords.point2Z + 4},dx=247,dy=${
+          this.WORLD_MAX_Y - this.WORLD_MIN_Y
+        },dz=247,gamemode=survival,team=!${teamId}]`,
       },
     ];
 
     try {
       // Place all command blocks using RCON
       for (const block of commandBlocks) {
-        const command = `setblock ${block.x} ${block.y} ${block.z} repeating_command_block[facing=up]{auto:1b,Command:"${block.cmd}"}`;
+        const command =
+          `setblock ${block.x} ${block.y} ${block.z} repeating_command_block[facing=up]{auto:1b,Command:"${block.cmd}"}`;
         await rcon.executeCommand(command);
         await new Promise((resolve) => setTimeout(resolve, 200)); // Delay to prevent server overload
       }
@@ -346,7 +381,9 @@ export class Zones {
 
       // Place redstone to power the system
       await rcon.executeCommand(
-        `setblock ${coords.point2X + 128} 3 ${coords.point2Z + 128} redstone_block`,
+        `setblock ${coords.point2X + 128} 3 ${
+          coords.point2Z + 128
+        } redstone_block`,
       );
 
       // Add visual corner markers
@@ -373,7 +410,9 @@ export class Zones {
 
         // Add lantern on top
         await rcon.executeCommand(
-          `setblock ${corner.x} ${coords.centerY + 3} ${corner.z} lantern[hanging=false]`,
+          `setblock ${corner.x} ${
+            coords.centerY + 3
+          } ${corner.z} lantern[hanging=false]`,
         );
 
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -384,7 +423,9 @@ export class Zones {
         `setblock ${coords.centerX} ${coords.centerY} ${coords.centerZ} lodestone`,
       );
       await rcon.executeCommand(
-        `setblock ${coords.centerX} ${coords.centerY + 1} ${coords.centerZ} end_rod`,
+        `setblock ${coords.centerX} ${
+          coords.centerY + 1
+        } ${coords.centerZ} end_rod`,
       );
     } catch (error) {
       throw new Error(`Failed to setup zone protection: ${error.message}`);
@@ -597,7 +638,7 @@ export class Zones {
       }
 
       const overlapping = zones.some((zone) =>
-        this.isOverlapping(newZone, zone),
+        this.isOverlapping(newZone, zone)
       );
       if (overlapping) {
         throw new Error(
@@ -740,9 +781,9 @@ export class Zones {
             : []),
           ...(zone.forSale
             ? [
-                text("💰 For Sale ", { style: { color: "yellow" } }),
-                text(`(${zone.price} XPL)`, { style: { color: "gold" } }),
-              ]
+              text("💰 For Sale ", { style: { color: "yellow" } }),
+              text(`(${zone.price} XPL)`, { style: { color: "gold" } }),
+            ]
             : []),
           ...(!zone.teleportEnabled && !zone.forSale
             ? [text("🔒 Private", { style: { color: "gray" } })]
@@ -756,12 +797,16 @@ export class Zones {
           // Location info
           text("Location: ", { style: { color: "gray" } }),
           text(
-            `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${Math.floor(zone.center.z)}`,
+            `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${
+              Math.floor(zone.center.z)
+            }`,
             {
               style: { color: "aqua" },
               onClick: {
                 action: "copy_to_clipboard",
-                value: `${Math.floor(zone.center.x)} ${Math.floor(zone.center.y)} ${Math.floor(zone.center.z)}`,
+                value: `${Math.floor(zone.center.x)} ${
+                  Math.floor(zone.center.y)
+                } ${Math.floor(zone.center.z)}`,
               },
             },
           ),
@@ -912,7 +957,11 @@ export class Zones {
         ),
         text("For Sale: ", { style: { color: "gray" } }),
         text(
-          `${currentZone.forSale ? `✅ Listed for ${currentZone.price} XPL` : "❌ Not for sale"}\n`,
+          `${
+            currentZone.forSale
+              ? `✅ Listed for ${currentZone.price} XPL`
+              : "❌ Not for sale"
+          }\n`,
           {
             style: { color: currentZone.forSale ? "green" : "red" },
           },
@@ -928,12 +977,16 @@ export class Zones {
         text("\n📍 Location\n", { style: { color: "gold" } }),
         text("Center: ", { style: { color: "gray" } }),
         text(
-          `${Math.floor(currentZone.center.x)}, ${Math.floor(currentZone.center.y)}, ${Math.floor(currentZone.center.z)}`,
+          `${Math.floor(currentZone.center.x)}, ${
+            Math.floor(currentZone.center.y)
+          }, ${Math.floor(currentZone.center.z)}`,
           {
             style: { color: "aqua" },
             onClick: {
               action: "copy_to_clipboard",
-              value: `${Math.floor(currentZone.center.x)} ${Math.floor(currentZone.center.y)} ${Math.floor(currentZone.center.z)}`,
+              value: `${Math.floor(currentZone.center.x)} ${
+                Math.floor(currentZone.center.y)
+              } ${Math.floor(currentZone.center.z)}`,
             },
           },
         ),
@@ -947,15 +1000,15 @@ export class Zones {
         // Teleport Hub Info
         ...(currentZone.teleportEnabled
           ? [
-              text("\n🌟 Teleport Hub Info\n", { style: { color: "gold" } }),
-              text(
-                "This zone serves as a public teleport hub for team members. ",
-                { style: { color: "aqua" } },
-              ),
-              text("Members can use ", { style: { color: "gray" } }),
-              text("/zones tp ", { style: { color: "yellow" } }),
-              text("to quickly travel here.\n", { style: { color: "gray" } }),
-            ]
+            text("\n🌟 Teleport Hub Info\n", { style: { color: "gold" } }),
+            text(
+              "This zone serves as a public teleport hub for team members. ",
+              { style: { color: "aqua" } },
+            ),
+            text("Members can use ", { style: { color: "gray" } }),
+            text("/zones tp ", { style: { color: "yellow" } }),
+            text("to quickly travel here.\n", { style: { color: "gray" } }),
+          ]
           : []),
 
         // Actions Section
@@ -974,45 +1027,47 @@ export class Zones {
         // Leader-only actions
         ...(isTeamLeader
           ? [
-              button(
-                currentZone.teleportEnabled
-                  ? "Disable Teleport Hub"
-                  : "Enable Teleport Hub",
-                {
-                  variant: currentZone.teleportEnabled
-                    ? "destructive"
-                    : "success",
-                  onClick: {
-                    action: "run_command",
-                    value: `/zones modify ${currentZone.id} teleport ${!currentZone.teleportEnabled}`,
-                  },
-                },
-              ),
-              text(" "),
-              button("Set Price", {
-                variant: "outline",
-                onClick: {
-                  action: "suggest_command",
-                  value: `/zones modify ${currentZone.id} price `,
-                },
-              }),
-              text(" "),
-              button("Edit Description", {
-                variant: "outline",
-                onClick: {
-                  action: "suggest_command",
-                  value: `/zones modify ${currentZone.id} description `,
-                },
-              }),
-              text(" "),
-              button("Delete", {
-                variant: "destructive",
+            button(
+              currentZone.teleportEnabled
+                ? "Disable Teleport Hub"
+                : "Enable Teleport Hub",
+              {
+                variant: currentZone.teleportEnabled
+                  ? "destructive"
+                  : "success",
                 onClick: {
                   action: "run_command",
-                  value: `/zones delete ${currentZone.id}`,
+                  value:
+                    `/zones modify ${currentZone.id} teleport ${!currentZone
+                      .teleportEnabled}`,
                 },
-              }),
-            ]
+              },
+            ),
+            text(" "),
+            button("Set Price", {
+              variant: "outline",
+              onClick: {
+                action: "suggest_command",
+                value: `/zones modify ${currentZone.id} price `,
+              },
+            }),
+            text(" "),
+            button("Edit Description", {
+              variant: "outline",
+              onClick: {
+                action: "suggest_command",
+                value: `/zones modify ${currentZone.id} description `,
+              },
+            }),
+            text(" "),
+            button("Delete", {
+              variant: "destructive",
+              onClick: {
+                action: "run_command",
+                value: `/zones delete ${currentZone.id}`,
+              },
+            }),
+          ]
           : []),
       ]);
 
@@ -1375,7 +1430,9 @@ export class Zones {
 
         if (playerBalance < tpCost) {
           throw new Error(
-            `Insufficient funds. Teleport costs ${tpCost} XPL (${distance.toFixed(0)} blocks)`,
+            `Insufficient funds. Teleport costs ${tpCost} XPL (${
+              distance.toFixed(0)
+            } blocks)`,
           );
         }
 
@@ -1427,16 +1484,16 @@ export class Zones {
         }),
         ...(isSameTeam
           ? [
-              text("\nFree teleport", { style: { color: "green" } }),
-              text(" (team zone)", { style: { color: "gray" } }),
-            ]
+            text("\nFree teleport", { style: { color: "green" } }),
+            text(" (team zone)", { style: { color: "gray" } }),
+          ]
           : [
-              text("\nTeleport Hub Fee: ", { style: { color: "gray" } }),
-              text(`${tpCost} XPL`, { style: { color: "gold" } }),
-              text(` (${distance.toFixed(0)} blocks)`, {
-                style: { color: "gray" },
-              }),
-            ]),
+            text("\nTeleport Hub Fee: ", { style: { color: "gray" } }),
+            text(`${tpCost} XPL`, { style: { color: "gold" } }),
+            text(` (${distance.toFixed(0)} blocks)`, {
+              style: { color: "gray" },
+            }),
+          ]),
       ]);
 
       // Notify team about earned XPL if applicable
@@ -1540,7 +1597,9 @@ export class Zones {
           style: { color: "gold", styles: ["bold"] },
         }),
         text(
-          `${zonesForSale.length} zone${zonesForSale.length !== 1 ? "s" : ""} available for purchase\n`,
+          `${zonesForSale.length} zone${
+            zonesForSale.length !== 1 ? "s" : ""
+          } available for purchase\n`,
           {
             style: { color: "yellow" },
           },
@@ -1580,12 +1639,16 @@ export class Zones {
             // Location
             text("Location: ", { style: { color: "gray" } }),
             text(
-              `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${Math.floor(zone.center.z)}`,
+              `${Math.floor(zone.center.x)}, ${Math.floor(zone.center.y)}, ${
+                Math.floor(zone.center.z)
+              }`,
               {
                 style: { color: "aqua" },
                 onClick: {
                   action: "copy_to_clipboard",
-                  value: `${Math.floor(zone.center.x)} ${Math.floor(zone.center.y)} ${Math.floor(zone.center.z)}`,
+                  value: `${Math.floor(zone.center.x)} ${
+                    Math.floor(zone.center.y)
+                  } ${Math.floor(zone.center.z)}`,
                 },
               },
             ),
@@ -1606,15 +1669,15 @@ export class Zones {
             text(" "),
             ...(zone.teleportEnabled
               ? [
-                  button("Teleport Preview", {
-                    variant: "success",
-                    onClick: {
-                      action: "run_command",
-                      value: `/zones tp ${zone.id}`,
-                    },
-                  }),
-                  text(" "),
-                ]
+                button("Teleport Preview", {
+                  variant: "success",
+                  onClick: {
+                    action: "run_command",
+                    value: `/zones tp ${zone.id}`,
+                  },
+                }),
+                text(" "),
+              ]
               : []),
             button("Buy Zone", {
               variant: "ghost",
@@ -1691,18 +1754,15 @@ export class Zones {
               Math.pow(playerPos.y - zone.center.y, 2) +
               Math.pow(playerPos.z - zone.center.z, 2),
           ),
-          cost:
-            playerTeamId === zone.teamId
-              ? 0
-              : Math.ceil(
-                  5 +
-                    Math.sqrt(
-                      Math.pow(playerPos.x - zone.center.x, 2) +
-                        Math.pow(playerPos.y - zone.center.y, 2) +
-                        Math.pow(playerPos.z - zone.center.z, 2),
-                    ) *
-                      0.01,
-                ),
+          cost: playerTeamId === zone.teamId ? 0 : Math.ceil(
+            5 +
+              Math.sqrt(
+                  Math.pow(playerPos.x - zone.center.x, 2) +
+                    Math.pow(playerPos.y - zone.center.y, 2) +
+                    Math.pow(playerPos.z - zone.center.z, 2),
+                ) *
+                0.01,
+          ),
         }))
         .sort((a, b) => a.distance - b.distance); // Sort by distance
 
@@ -1776,12 +1836,16 @@ export class Zones {
             // Location with copy
             text("Location: ", { style: { color: "gray" } }),
             text(
-              `${Math.floor(hub.center.x)}, ${Math.floor(hub.center.y)}, ${Math.floor(hub.center.z)}`,
+              `${Math.floor(hub.center.x)}, ${Math.floor(hub.center.y)}, ${
+                Math.floor(hub.center.z)
+              }`,
               {
                 style: { color: "aqua" },
                 onClick: {
                   action: "copy_to_clipboard",
-                  value: `${Math.floor(hub.center.x)} ${Math.floor(hub.center.y)} ${Math.floor(hub.center.z)}`,
+                  value: `${Math.floor(hub.center.x)} ${
+                    Math.floor(hub.center.y)
+                  } ${Math.floor(hub.center.z)}`,
                 },
               },
             ),
@@ -1794,11 +1858,11 @@ export class Zones {
             // For Sale status if applicable
             ...(hub.forSale
               ? [
-                  text("📢 ", { style: { color: "yellow" } }),
-                  text("This hub is also ", { style: { color: "gray" } }),
-                  text("FOR SALE", { style: { color: "gold" } }),
-                  text(` (${hub.price} XPL)\n`, { style: { color: "yellow" } }),
-                ]
+                text("📢 ", { style: { color: "yellow" } }),
+                text("This hub is also ", { style: { color: "gray" } }),
+                text("FOR SALE", { style: { color: "gold" } }),
+                text(` (${hub.price} XPL)\n`, { style: { color: "yellow" } }),
+              ]
               : []),
 
             // Quick actions
@@ -1914,7 +1978,7 @@ export class Zones {
         .map(() =>
           Array(mapWidth)
             .fill(null)
-            .map(() => ({ char: symbols.empty, color: "gray" })),
+            .map(() => ({ char: symbols.empty, color: "gray" }))
         );
 
       const worldToGrid = (x: number, z: number): [number, number] | null => {
@@ -2037,7 +2101,9 @@ export class Zones {
 
       const mapDisplay = container([
         text(
-          `Zone Map (Zoom ${zoom}) - ${blocksPerChar * mapWidth} x ${blocksPerChar * mapHeight} blocks\n`,
+          `Zone Map (Zoom ${zoom}) - ${blocksPerChar * mapWidth} x ${
+            blocksPerChar * mapHeight
+          } blocks\n`,
           {
             style: { color: "gold", styles: ["bold"] },
           },
@@ -2054,10 +2120,10 @@ export class Zones {
                 hover: cell.name
                   ? `${cell.name}${cell.type ? ` (${cell.type})` : ""}`
                   : undefined,
-              }),
+              })
             ),
             text("\n"),
-          ]),
+          ])
         ),
 
         text(`\nScale: 1 symbol = ${blocksPerChar}x${blocksPerChar} blocks\n`, {

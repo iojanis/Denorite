@@ -1,13 +1,13 @@
 import {
-  Module,
+  Argument,
   Command,
   Description,
-  Permission,
   Event,
+  Module,
+  Permission,
   Socket,
-  Argument,
 } from "../decorators.ts";
-import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import { alert, button, container, divider, text } from "../tellraw-ui.ts";
 import type { ScriptContext } from "../types.ts";
 
 interface ServerConfig {
@@ -224,15 +224,15 @@ export class Server {
         }),
         ...(config.map_url
           ? [
-              text("Map: ", { style: { color: "gray" } }),
-              text(`${config.map_url}\n`, {
-                style: { color: "aqua" },
-                onClick: {
-                  action: "open_url",
-                  value: config.map_url,
-                },
-              }),
-            ]
+            text("Map: ", { style: { color: "gray" } }),
+            text(`${config.map_url}\n`, {
+              style: { color: "aqua" },
+              onClick: {
+                action: "open_url",
+                value: config.map_url,
+              },
+            }),
+          ]
           : []),
 
         divider(),
@@ -268,15 +268,15 @@ export class Server {
         }),
         ...(playerManager.hasPermission(sender, "operator")
           ? [
-              text(" "),
-              button("Restart", {
-                variant: "destructive",
-                onClick: {
-                  action: "run_command",
-                  value: "/server restart",
-                },
-              }),
-            ]
+            text(" "),
+            button("Restart", {
+              variant: "destructive",
+              onClick: {
+                action: "run_command",
+                value: "/server restart",
+              },
+            }),
+          ]
           : []),
       ]);
 
@@ -662,8 +662,7 @@ export class Server {
           title: "Library",
           icon: "eb.webp",
           version: "1.0.0",
-          description:
-            "Library for publishing and buying books",
+          description: "Library for publishing and buying books",
           permission: "player",
           singleWindow: false,
           isClosable: true,
@@ -690,8 +689,7 @@ export class Server {
           title: "KeyView",
           icon: "items/name_tag.png",
           version: "1.0.0",
-          description:
-            "Advanced key value database interface for operators",
+          description: "Advanced key value database interface for operators",
           permission: "operator",
           singleWindow: false,
           isClosable: true,

@@ -17,8 +17,12 @@ export class KvManager {
 
   async init() {
     try {
-      const url = Deno.env.get('DENO_KV_URL')
-      this.logger.debug(`Initializing KV store${url ? ` with URL: ${url}` : ' with default path'}`);
+      const url = Deno.env.get("DENO_KV_URL");
+      this.logger.debug(
+        `Initializing KV store${
+          url ? ` with URL: ${url}` : " with default path"
+        }`,
+      );
       this.kv = await Deno.openKv(url);
       this.logger.debug("KV store initialized successfully");
     } catch (error: any) {
@@ -52,7 +56,10 @@ export class KvManager {
     this.notifyWatchers(key as KvKey, undefined);
   }
 
-  list(prefix: Deno.KvKey, options?: Deno.KvListOptions): Deno.KvListIterator<unknown> {
+  list(
+    prefix: Deno.KvKey,
+    options?: Deno.KvListOptions,
+  ): Deno.KvListIterator<unknown> {
     this.assertKvInitialized();
     return this.kv!.list({ prefix }, options);
   }
@@ -73,7 +80,7 @@ export class KvManager {
   private notifyWatchers(key: KvKey, value: unknown): void {
     const keyString = JSON.stringify(key);
     const watcherCount = this.watchers.get(keyString)?.size || 0;
-    this.watchers.get(keyString)?.forEach(callback => callback(value));
+    this.watchers.get(keyString)?.forEach((callback) => callback(value));
   }
 
   atomic(): Deno.AtomicOperation {
@@ -83,7 +90,7 @@ export class KvManager {
 
   async getWithLock<T>(
     key: Deno.KvKey,
-    callback: (value: T | null) => Promise<T>
+    callback: (value: T | null) => Promise<T>,
   ): Promise<T> {
     this.assertKvInitialized();
 
@@ -105,7 +112,6 @@ export class KvManager {
       if (commitResult) {
         return newValue;
       }
-
     }
   }
 

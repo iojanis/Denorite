@@ -5,9 +5,9 @@ import { ConfigManager } from "./ConfigManager.ts";
 import { ScriptManager } from "./ScriptManager.ts";
 import { Logger } from "./logger.ts";
 import { AuthService } from "./AuthService.ts";
-import {RateLimiter} from "./RateLimiter.ts";
-import { PlayerManager, PlayerData } from "./PlayerManager.ts";
-import {DataReader, DenoriteProtocol} from "./DenoriteProtocol.ts";
+import { RateLimiter } from "./RateLimiter.ts";
+import { PlayerData, PlayerManager } from "./PlayerManager.ts";
+import { DataReader, DenoriteProtocol } from "./DenoriteProtocol.ts";
 
 export class SocketManager {
   private config: ConfigManager;
@@ -23,7 +23,7 @@ export class SocketManager {
     scriptManager: ScriptManager,
     logger: Logger,
     auth: AuthService,
-    rateLimiter: RateLimiter
+    rateLimiter: RateLimiter,
   ) {
     this.config = config;
     this.scriptManager = scriptManager;
@@ -31,15 +31,15 @@ export class SocketManager {
     this.auth = auth;
     this.rateLimiter = rateLimiter;
 
-    if (!this.scriptManager.kv) return
+    if (!this.scriptManager.kv) return;
     this.playerManager = new PlayerManager(logger, scriptManager.kv);
 
-    this.rateLimiter.setMethodCost('custom_command_executed', 5);
-    this.rateLimiter.setMethodCost('auth', 3);
+    this.rateLimiter.setMethodCost("custom_command_executed", 5);
+    this.rateLimiter.setMethodCost("auth", 3);
   }
 
   async init() {
-    this.logger.info('SocketManager initialized')
+    this.logger.info("SocketManager initialized");
     this.scriptManager.setPlayerManager(this.playerManager);
   }
 
@@ -51,9 +51,11 @@ export class SocketManager {
     const that = this;
     Deno.serve({
       onListen() {
-        that.logger.info(`Denorite WebSocket server running on ws://localhost:${port}`);
+        that.logger.info(
+          `Denorite WebSocket server running on ws://localhost:${port}`,
+        );
       },
-      port
+      port,
     }, async (req, conInfo) => {
       const url = new URL(req.url);
       const clientIp = this.getClientIp(conInfo);
@@ -61,10 +63,11 @@ export class SocketManager {
       const isAuthenticated = await this.verifyDenoriteToken(req);
       // console.log(clientIp)
 
-      const rateLimitResult = await this.rateLimiter.handleMinecraftServerRateLimit(
-        clientIp.hostname as unknown as string,
-        isAuthenticated
-      );
+      const rateLimitResult = await this.rateLimiter
+        .handleMinecraftServerRateLimit(
+          clientIp.hostname as unknown as string,
+          isAuthenticated,
+        );
 
       if (!rateLimitResult.allowed) {
         this.logger.error(`Rate limit exceeded for IP ${clientIp}`);
@@ -72,17 +75,19 @@ export class SocketManager {
       }
 
       if (!isAuthenticated) {
-        this.logger.error('Unauthorized: Invalid or missing Bearer token');
-        return new Response("Unauthorized: Invalid or missing Bearer token", { status: 401 });
+        this.logger.error("Unauthorized: Invalid or missing Bearer token");
+        return new Response("Unauthorized: Invalid or missing Bearer token", {
+          status: 401,
+        });
       }
 
       if (req.headers.get("upgrade") != "websocket") {
-        this.logger.error('no valid websocket', req);
+        this.logger.error("no valid websocket", req);
         return new Response(null, { status: 501 });
       }
 
       if (!await this.checkOrigin(req)) {
-        this.logger.error('no valid origin', req);
+        this.logger.error("no valid origin", req);
         return new Response("Forbidden: Origin not allowed", { status: 403 });
       }
 
@@ -96,12 +101,17 @@ export class SocketManager {
     });
   }
 
-
   startPlayerServer(port: number) {
-    const that = this
-    Deno.serve({ onListen() {
-        that.logger.info(`Player WebSocket server running on ws://localhost:${port}`);
-      }, port }, async (req, conInfo) => {
+    const that = this;
+    Deno.serve({
+      hostname: "0.0.0.0",
+      onListen() {
+        that.logger.info(
+          `Player WebSocket server running on ws://localhost:${port}`,
+        );
+      },
+      port,
+    }, async (req, conInfo) => {
       if (req.headers.get("upgrade") != "websocket") {
         return new Response(null, { status: 501 });
       }
@@ -126,7 +136,7 @@ export class SocketManager {
         metadata: {
           userAgent: req.headers.get("User-Agent"),
           protocol: req.headers.get("Sec-WebSocket-Protocol"),
-        }
+        },
       });
     };
 
@@ -136,10 +146,12 @@ export class SocketManager {
           const data = new Uint8Array(event.data);
           await this.handleBinaryMessage(data, socket);
         } else {
-          await this.handleWebSocketMessage(event.data, socket, 'minecraft');
+          await this.handleWebSocketMessage(event.data, socket, "minecraft");
         }
       } catch (error: any) {
-        this.logger.error(`Error processing Minecraft WebSocket message: ${error.message}`);
+        this.logger.error(
+          `Error processing Minecraft WebSocket message: ${error.message}`,
+        );
       }
     };
 
@@ -152,7 +164,7 @@ export class SocketManager {
         status: "disconnected",
         code: event.code,
         reason: event.reason || "connection_closed",
-        wasClean: event.wasClean
+        wasClean: event.wasClean,
       });
       this.scriptManager.removeMinecraftSocket(socket);
     };
@@ -167,11 +179,15 @@ export class SocketManager {
       // Convert binary message to JSON format for ScriptManager compatibility
       const jsonMessage = {
         id: message.id.toString(),
-        ...message.data
+        ...message.data,
       };
 
       // Use existing WebSocket message handler with converted data
-      await this.handleWebSocketMessage(JSON.stringify(jsonMessage), socket, 'minecraft');
+      await this.handleWebSocketMessage(
+        JSON.stringify(jsonMessage),
+        socket,
+        "minecraft",
+      );
     } catch (error: any) {
       this.logger.error(`Error handling binary message: ${error.message}`);
     }
@@ -186,9 +202,11 @@ export class SocketManager {
 
     socket.onmessage = async (event) => {
       try {
-        await this.handleWebSocketMessage(event.data, socket, 'runner');
+        await this.handleWebSocketMessage(event.data, socket, "runner");
       } catch (error: any) {
-        this.logger.error(`Error processing Runner WebSocket message: ${error.message}`);
+        this.logger.error(
+          `Error processing Runner WebSocket message: ${error.message}`,
+        );
       }
     };
 
@@ -205,7 +223,7 @@ export class SocketManager {
 
     let token: string | null = null;
     let playerName: string | null = null;
-    let userRole: 'guest' | 'player' | 'operator' = 'guest';
+    let userRole: "guest" | "player" | "operator" = "guest";
     let connectionId: string | null = null;
 
     // Add socket ID to the socket object
@@ -213,7 +231,9 @@ export class SocketManager {
     (socket as any).id = socketId;
 
     socket.onopen = () => {
-      this.logger.debug(`WS: ${playerName || 'guest'} ${userRole} (Socket ID: ${socketId})`);
+      this.logger.debug(
+        `WS: ${playerName || "guest"} ${userRole} (Socket ID: ${socketId})`,
+      );
       this.sendServerInfo(socket, userRole);
     };
 
@@ -224,20 +244,20 @@ export class SocketManager {
         // Rate limit check based on user role and message type
         const rateLimitResult = await this.rateLimiter.handleSocketRateLimit(
           clientIp.hostname as unknown as string,
-          message.eventType || 'message',
-          userRole
+          message.eventType || "message",
+          userRole,
         );
 
         if (!rateLimitResult.allowed) {
           socket.send(JSON.stringify({
-            type: 'error',
+            type: "error",
             socketId: socketId,
-            message: rateLimitResult.error
+            message: rateLimitResult.error,
           }));
           return;
         }
 
-        if (message.eventType === 'auth') {
+        if (message.eventType === "auth") {
           token = message.data.token;
           try {
             const payload = await this.auth.verifyToken(token as string);
@@ -250,14 +270,16 @@ export class SocketManager {
                 payload,
                 {
                   ip: clientIp.hostname as string,
-                  userAgent: req.headers.get("User-Agent") || "unknown"
-                }
+                  userAgent: req.headers.get("User-Agent") || "unknown",
+                },
               );
 
               // Get the updated player data
               const playerData = this.playerManager.getPlayer(playerName);
               if (!playerData) {
-                throw new Error('Failed to retrieve player data after connection');
+                throw new Error(
+                  "Failed to retrieve player data after connection",
+                );
               }
 
               userRole = payload.role;
@@ -265,64 +287,66 @@ export class SocketManager {
               let user = {
                 username: playerName,
                 role: userRole,
-                permissionLevel: playerData.permissionLevel
+                permissionLevel: playerData.permissionLevel,
               };
 
-              await this.playerManager.updatePlayerRole(playerName, userRole)
+              await this.playerManager.updatePlayerRole(playerName, userRole);
 
               this.scriptManager.addPlayerSocket(playerName, socket);
               socket.send(JSON.stringify({
-                type: 'authenticated',
+                type: "authenticated",
                 success: true,
                 socketId: socketId,
                 connectionId,
                 user,
-                message: 'Logged in as ' + playerName
+                message: "Logged in as " + playerName,
               }));
 
               await this.sendServerInfo(socket, userRole);
             } else {
               socket.send(JSON.stringify({
-                type: 'auth_failed',
+                type: "auth_failed",
                 success: false,
                 socketId: socketId,
-                message: 'Token expired or invalid!'
+                message: "Token expired or invalid!",
               }));
             }
           } catch (error) {
             socket.send(JSON.stringify({
-              type: 'auth_failed',
+              type: "auth_failed",
               success: false,
               socketId: socketId,
-              message: 'Authentication failed: ' + error.message
+              message: "Authentication failed: " + error.message,
             }));
           }
-        } else if (message.eventType === 'get_apps') {
-          const apps = await this.scriptManager.moduleWatcher.handleAppListRequest(userRole);
+        } else if (message.eventType === "get_apps") {
+          const apps = await this.scriptManager.moduleWatcher
+            .handleAppListRequest(userRole);
           socket.send(JSON.stringify({
-            type: 'apps_list',
+            type: "apps_list",
             success: true,
             socketId: socketId,
-            data: apps
+            data: apps,
           }));
-        } else if (message.eventType === 'get_app_code') {
+        } else if (message.eventType === "get_app_code") {
           if (!message.data.apps || !Array.isArray(message.data.apps)) {
             socket.send(JSON.stringify({
-              type: 'error',
+              type: "error",
               socketId: socketId,
-              message: 'Invalid request: apps array required'
+              message: "Invalid request: apps array required",
             }));
             return;
           }
-          const appCode = await this.scriptManager.moduleWatcher.handleAppCodeRequest(
-            message.data.apps,
-            userRole
-          );
+          const appCode = await this.scriptManager.moduleWatcher
+            .handleAppCodeRequest(
+              message.data.apps,
+              userRole,
+            );
           socket.send(JSON.stringify({
-            type: 'app_code',
+            type: "app_code",
             success: true,
             socketId: socketId,
-            data: appCode
+            data: appCode,
           }));
         } else if (message.eventType) {
           // Always pass playerName (null for guests) to maintain scriptManager requirements
@@ -331,31 +355,35 @@ export class SocketManager {
             playerName, // null if guest, actual name if authenticated
             socket,
             message.data,
-            message.messageId
+            message.messageId,
           );
         } else {
           socket.send(JSON.stringify({
-            type: 'error',
+            type: "error",
             socketId: socketId,
-            message: 'Invalid message format'
+            message: "Invalid message format",
           }));
         }
       } catch (error: any) {
-        this.logger.error(`Error processing player WebSocket message (Socket ID: ${socketId}): ${error.message}`);
+        this.logger.error(
+          `Error processing player WebSocket message (Socket ID: ${socketId}): ${error.message}`,
+        );
         try {
           socket.send(JSON.stringify({
-            type: 'error',
+            type: "error",
             socketId: socketId,
-            message: error.message
+            message: error.message,
           }));
         } catch (error: any) {
-          this.logger.error(error.message)
+          this.logger.error(error.message);
         }
       }
     };
 
     socket.onclose = () => {
-      this.logger.debug(`Player WebSocket connection closed (Socket ID: ${socketId})`);
+      this.logger.debug(
+        `Player WebSocket connection closed (Socket ID: ${socketId})`,
+      );
 
       // Clean up the connection in the player manager if authenticated
       if (playerName && connectionId) {
@@ -367,24 +395,33 @@ export class SocketManager {
     return response;
   }
 
-  async sendServerInfo(socket: WebSocket, permission: 'guest' | 'player' | 'operator') {
+  async sendServerInfo(
+    socket: WebSocket,
+    permission: "guest" | "player" | "operator",
+  ) {
     try {
       // Load server info from KV store
-      const serverName = await this.scriptManager.kv.get(['server', 'name']) || ['server', 'name'];
-      const serverDescription = await this.scriptManager.kv.get(['server', 'description']) || ['server', 'description'];
-      const serverUrl = await this.scriptManager.kv.get(['server', 'url']) || ['server', 'url'];
-      const minecraftVersion = await this.scriptManager.kv.get(['server', 'version']) || ['server', 'version'];
+      const serverName = await this.scriptManager.kv.get(["server", "name"]) ||
+        ["server", "name"];
+      const serverDescription =
+        await this.scriptManager.kv.get(["server", "description"]) ||
+        ["server", "description"];
+      const serverUrl = await this.scriptManager.kv.get(["server", "url"]) ||
+        ["server", "url"];
+      const minecraftVersion =
+        await this.scriptManager.kv.get(["server", "version"]) ||
+        ["server", "version"];
 
       // Load apps configuration from KV
-      const apps = await this.scriptManager.kv.get(['server', 'apps']) || [];
+      const apps = await this.scriptManager.kv.get(["server", "apps"]) || [];
 
       let commands = this.scriptManager.getCommandsByPermission(permission);
 
-      if (permission === 'operator') {
+      if (permission === "operator") {
         commands = [
           ...commands, // operator commands
-          ...this.scriptManager.getCommandsByPermission('player'), // player commands
-          ...this.scriptManager.getCommandsByPermission('guest')   // guest commands
+          ...this.scriptManager.getCommandsByPermission("player"), // player commands
+          ...this.scriptManager.getCommandsByPermission("guest"), // guest commands
         ];
       }
 
@@ -392,7 +429,7 @@ export class SocketManager {
 
       // Send the server info to the client
       socket.send(JSON.stringify({
-        type: 'server_info',
+        type: "server_info",
         success: true,
         serverName,
         serverDescription,
@@ -400,20 +437,24 @@ export class SocketManager {
         minecraftVersion,
         commands,
         extras: {
-          apps
-        }
+          apps,
+        },
       }));
     } catch (error: any) {
       this.logger.error(`Error sending server info: ${error.message}`);
       socket.send(JSON.stringify({
-        type: 'server_info',
+        type: "server_info",
         success: false,
-        error: 'Failed to load server information'
+        error: "Failed to load server information",
       }));
     }
   }
 
-  private async handleWebSocketMessage(message: string, socket: WebSocket, type: 'minecraft' | 'runner') {
+  private async handleWebSocketMessage(
+    message: string,
+    socket: WebSocket,
+    type: "minecraft" | "runner",
+  ) {
     try {
       const data = JSON.parse(message);
       // this.logger.debug(`Received ${type} message: ${JSON.stringify(data)}`);
@@ -439,8 +480,8 @@ export class SocketManager {
             data.data.subcommand,
             data.data.arguments,
             data.data.sender,
-            data.data.senderType
-          ).catch(error => {
+            data.data.senderType,
+          ).catch((error) => {
             this.logger.error(`Error handling command: ${error}`);
           });
           return;
@@ -458,14 +499,13 @@ export class SocketManager {
 
       // Handle other message types (commands, script operations, etc.)
       await this.scriptManager.handleMessage(data, type);
-
     } catch (error: any) {
       this.logger.error(`Error handling WebSocket message: ${error.message}`);
       const data = JSON.parse(message);
       socket.send(JSON.stringify({
         id: data?.id,
-        type: 'error',
-        error: 'Internal server error'
+        type: "error",
+        error: "Internal server error",
       }));
     }
   }
@@ -485,12 +525,12 @@ export class SocketManager {
 
       // Store player ID/name mappings in KV store
       const mappingResult = await this.scriptManager.kv.atomic()
-        .set(['playerNameToId', playerName], playerId)
-        .set(['playerIdToName', playerId], playerName)
+        .set(["playerNameToId", playerName], playerId)
+        .set(["playerIdToName", playerId], playerName)
         .commit();
 
       if (!mappingResult.ok) {
-        throw new Error('Failed to store player mappings');
+        throw new Error("Failed to store player mappings");
       }
 
       // Handle the Minecraft connection with the new player manager
@@ -499,15 +539,15 @@ export class SocketManager {
         playerName,
         location: { x, y, z, dimension },
         clientInfo: {
-          ip: ip || 'unknown',
-          version: version || 'unknown'
-        }
+          ip: ip || "unknown",
+          version: version || "unknown",
+        },
       });
 
       // Get the updated player data
       const playerData = this.playerManager.getPlayer(playerName);
       if (!playerData) {
-        throw new Error('Failed to retrieve player data after connection');
+        throw new Error("Failed to retrieve player data after connection");
       }
 
       // Notify other connected clients about the player join
@@ -525,7 +565,6 @@ export class SocketManager {
       // });
 
       this.logger.info(`Player joined: ${playerName} (${playerData.role})`);
-
     } catch (error: any) {
       this.logger.error(`Error in handlePlayerJoined: ${error.message}`);
       throw error;
@@ -553,10 +592,12 @@ export class SocketManager {
 
       // Find and remove the Minecraft connection
       const minecraftConnection = Array.from(playerData.connections.entries())
-        .find(([_, conn]) => conn.type === 'minecraft');
+        .find(([_, conn]) => conn.type === "minecraft");
 
       if (!minecraftConnection) {
-        this.logger.warn(`No Minecraft connection found for leaving player: ${playerName}`);
+        this.logger.warn(
+          `No Minecraft connection found for leaving player: ${playerName}`,
+        );
         return;
       }
 
@@ -567,7 +608,7 @@ export class SocketManager {
         x,
         y,
         z,
-        dimension
+        dimension,
       };
 
       // Update player data with final location
@@ -582,7 +623,7 @@ export class SocketManager {
       const updatedPlayerData = this.playerManager.getPlayer(playerName);
       const hasWebSocketConnection = updatedPlayerData &&
         Array.from(updatedPlayerData.connections.values())
-          .some(conn => conn.type === 'websocket');
+          .some((conn) => conn.type === "websocket");
 
       // Prepare leave event data
       const leaveEventData = {
@@ -592,11 +633,11 @@ export class SocketManager {
         role: playerData.role,
         location: finalLocation,
         timestamp: Date.now(),
-        reason: reason || 'player_left',
+        reason: reason || "player_left",
         remainingConnections: {
           total: updatedPlayerData?.connections.size || 0,
-          hasWebSocket: hasWebSocketConnection
-        }
+          hasWebSocket: hasWebSocketConnection,
+        },
       };
 
       // Notify other connected clients about the player leave
@@ -605,12 +646,12 @@ export class SocketManager {
       // If player still has WebSocket connections, notify them about the game disconnect
       if (hasWebSocketConnection) {
         for (const connection of updatedPlayerData!.connections.values()) {
-          if (connection.type === 'websocket' && connection.socket) {
+          if (connection.type === "websocket" && connection.socket) {
             connection.socket.send(JSON.stringify({
-              type: 'minecraft_disconnected',
+              type: "minecraft_disconnected",
               timestamp: Date.now(),
               location: finalLocation,
-              reason: reason || 'player_left'
+              reason: reason || "player_left",
             }));
           }
         }
@@ -619,24 +660,25 @@ export class SocketManager {
       // Optional: Store last known location in KV store if needed
       try {
         await this.scriptManager.kv.set(
-          ['player', playerName, 'lastLocation'],
-          finalLocation
+          ["player", playerName, "lastLocation"],
+          finalLocation,
         );
       } catch (kvError) {
-        this.logger.warn(`Failed to store last location for ${playerName}: ${kvError.message}`);
+        this.logger.warn(
+          `Failed to store last location for ${playerName}: ${kvError.message}`,
+        );
       }
 
       // Log appropriate message based on remaining connections
       if (updatedPlayerData) {
         this.logger.info(
-          `Player ${playerName} disconnected from Minecraft but remains connected via WebSocket`
+          `Player ${playerName} disconnected from Minecraft but remains connected via WebSocket`,
         );
       } else {
         this.logger.info(
-          `Player ${playerName} fully disconnected (Role: ${playerData.role})`
+          `Player ${playerName} fully disconnected (Role: ${playerData.role})`,
         );
       }
-
     } catch (error: any) {
       this.logger.error(`Error in handlePlayerLeft: ${error.message}`);
       throw error;
@@ -657,7 +699,9 @@ export class SocketManager {
       // this.logger.info(`Denorite token verified successfully: ${JSON.stringify(payload)}`);
       return true;
     } catch (error: any) {
-      this.logger.error(`Denorite client verification failed: ${error.message}`);
+      this.logger.error(
+        `Denorite client verification failed: ${error.message}`,
+      );
       this.logger.error(`Token received: ${token}`);
       return false;
     }
@@ -667,7 +711,7 @@ export class SocketManager {
     const origin = req.headers.get("Origin");
     const allowedOrigin = await this.config.get("ALLOWED_ORIGIN") as string;
 
-    this.logger.debug('Allowed origin:', allowedOrigin)
+    this.logger.debug("Allowed origin:", allowedOrigin);
 
     if (!origin) {
       this.logger.warn("No Origin header present in the request");

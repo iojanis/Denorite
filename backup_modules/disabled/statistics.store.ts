@@ -1,7 +1,7 @@
 // store.ts
 
-import type { PlayerStatistics, ServerStatistics } from './statistics.types.ts';
-import { StatisticsUtils } from './statistics.utils.ts';
+import type { PlayerStatistics, ServerStatistics } from "./statistics.types.ts";
+import { StatisticsUtils } from "./statistics.utils.ts";
 
 export class StatisticsStore {
   private kv: Deno.Kv;
@@ -16,25 +16,30 @@ export class StatisticsStore {
     this.cache = {
       players: new Map(),
       server: StatisticsUtils.createDefaultServerStats(),
-      lastSave: Date.now()
+      lastSave: Date.now(),
     };
   }
 
   async initialize(): Promise<void> {
     try {
       // Load server stats
-      const serverStats = await this.kv.get<ServerStatistics>(['statistics', 'server']);
+      const serverStats = await this.kv.get<ServerStatistics>([
+        "statistics",
+        "server",
+      ]);
       if (serverStats.value) {
         this.cache.server = serverStats.value;
       }
 
       // Load player stats
-      const playerStats = this.kv.list<PlayerStatistics>({ prefix: ['statistics', 'players'] });
+      const playerStats = this.kv.list<PlayerStatistics>({
+        prefix: ["statistics", "players"],
+      });
       for await (const entry of playerStats) {
         this.cache.players.set(entry.value.playerName, entry.value);
       }
     } catch (error) {
-      console.error('Error initializing statistics store:', error);
+      console.error("Error initializing statistics store:", error);
     }
   }
 
@@ -44,18 +49,18 @@ export class StatisticsStore {
 
     try {
       // Save server stats
-      await this.kv.set(['statistics', 'server'], this.cache.server);
+      await this.kv.set(["statistics", "server"], this.cache.server);
 
       // Save player stats
       const atomic = this.kv.atomic();
       for (const [playerName, stats] of this.cache.players.entries()) {
-        atomic.set(['statistics', 'players', playerName], stats);
+        atomic.set(["statistics", "players", playerName], stats);
       }
       await atomic.commit();
 
       this.cache.lastSave = now;
     } catch (error) {
-      console.error('Error saving statistics:', error);
+      console.error("Error saving statistics:", error);
     }
   }
 
@@ -78,24 +83,24 @@ export class StatisticsStore {
 
   async updatePlayerStats(
     playerName: string,
-    updater: (stats: PlayerStatistics) => void
+    updater: (stats: PlayerStatistics) => void,
   ): Promise<void> {
     const stats = this.cache.players.get(playerName);
     if (stats) {
       updater(stats);
       if (Date.now() - this.cache.lastSave >= 60000) {
-        await this.kv.set(['statistics', 'players', playerName], stats);
+        await this.kv.set(["statistics", "players", playerName], stats);
         this.cache.lastSave = Date.now();
       }
     }
   }
 
   async updateServerStats(
-    updater: (stats: ServerStatistics) => void
+    updater: (stats: ServerStatistics) => void,
   ): Promise<void> {
     updater(this.cache.server);
     if (Date.now() - this.cache.lastSave >= 60000) {
-      await this.kv.set(['statistics', 'server'], this.cache.server);
+      await this.kv.set(["statistics", "server"], this.cache.server);
       this.cache.lastSave = Date.now();
     }
   }

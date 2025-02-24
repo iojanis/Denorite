@@ -1,5 +1,8 @@
 // main.ts
-import { encode as base64Encode, decode as base64Decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
+import {
+  decode as base64Decode,
+  encode as base64Encode,
+} from "https://deno.land/std@0.177.0/encoding/base64.ts";
 import "jsr:@std/dotenv/load";
 
 import { ConfigManager } from "./core/ConfigManager.ts";
@@ -8,19 +11,19 @@ import { Logger } from "./core/logger.ts";
 import { AuthService } from "./core/AuthService.ts";
 import { ScriptManager } from "./core/ScriptManager.ts";
 import { SocketManager } from "./core/SocketManager.ts";
-import {printColoredPotion, printHeader} from "./core/DragonsBreath.ts";
-import {RateLimiter} from "./core/RateLimiter.ts";
+import { printColoredPotion, printHeader } from "./core/DragonsBreath.ts";
+import { RateLimiter } from "./core/RateLimiter.ts";
 
 // Default configuration
 const DEFAULT_CONFIG = {
   MINECRAFT_WS_PORT: 8082,
   PLAYER_WS_PORT: 8081,
   COMMAND_TIMEOUT: 5000,
-  LOG_LEVEL: 'info',
+  LOG_LEVEL: "info",
   RATE_LIMIT_TOKENS: 10,
   RATE_LIMIT_INTERVAL: 1000,
   RATE_LIMIT_BURST: 20,
-  ALLOWED_ORIGIN: 'http://localhost'
+  ALLOWED_ORIGIN: "http://localhost",
 };
 
 async function loadOrGenerateJwtSecret(envVarName: string): Promise<CryptoKey> {
@@ -48,30 +51,14 @@ async function loadOrGenerateJwtSecret(envVarName: string): Promise<CryptoKey> {
     secretBuffer,
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign", "verify"]
+    ["sign", "verify"],
   );
 }
 
 async function main() {
-  printColoredPotion()
+  printColoredPotion();
   const isRunner = Deno.args.includes("--runner");
-  if (isRunner) printHeader()
-
-  const doDelete = Deno.args.includes("--delete");
-  if (doDelete) {
-    await Deno.remove(`${Deno.cwd()}/core/ScriptInterpreter.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/ScriptManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/SocketManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/RconManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/RconClient.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/WebSocketCommandHandler.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/ModuleWatcher.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/kvManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/DragonsBreath.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/CronManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/ConfigManager.ts`, { recursive: true })
-    await Deno.remove(`${Deno.cwd()}/core/AuthService.ts`, { recursive: true })
-  }
+  if (isRunner) printHeader();
 
   const logger = new Logger();
 
@@ -84,21 +71,42 @@ async function main() {
   await configManager.init(DEFAULT_CONFIG);
 
   // Load JWT secrets
-  const denoriteSecret = await loadOrGenerateJwtSecret("DENORITE_SERVER_SECRET");
+  const denoriteSecret = await loadOrGenerateJwtSecret(
+    "DENORITE_SERVER_SECRET",
+  );
   const jwtSecret = await loadOrGenerateJwtSecret("DENORITE_JWT_SECRET");
 
-  const authService = new AuthService(configManager, kvManager, logger, jwtSecret, denoriteSecret);
+  const authService = new AuthService(
+    configManager,
+    kvManager,
+    logger,
+    jwtSecret,
+    denoriteSecret,
+  );
 
-  const scriptManager = new ScriptManager(configManager, kvManager, logger, authService, rateLimiter);
+  const scriptManager = new ScriptManager(
+    configManager,
+    kvManager,
+    logger,
+    authService,
+    rateLimiter,
+  );
   await scriptManager.init();
   await scriptManager.loadModules(); // Added this line to load modules
 
-
-  const wsManager = new SocketManager(configManager, scriptManager, logger, authService, rateLimiter);
+  const wsManager = new SocketManager(
+    configManager,
+    scriptManager,
+    logger,
+    authService,
+    rateLimiter,
+  );
   await wsManager.init();
 
-  const minecraftWsPort = await configManager.get('MINECRAFT_WS_PORT') as number;
-  const playerWsPort = await configManager.get('PLAYER_WS_PORT') as number;
+  const minecraftWsPort = await configManager.get(
+    "MINECRAFT_WS_PORT",
+  ) as number;
+  const playerWsPort = await configManager.get("PLAYER_WS_PORT") as number;
 
   // Generate and log a Denorite server token
   const serverToken = await authService.createDenoriteToken(360 * 24 * 60 * 60); // 360 days
@@ -107,7 +115,7 @@ async function main() {
   wsManager.startMinecraftServer(minecraftWsPort);
   wsManager.startPlayerServer(playerWsPort);
 
-  logger.info('Accepting Connections')
+  logger.info("Accepting Connections");
 
   // Keep the process running
   await new Promise(() => {});

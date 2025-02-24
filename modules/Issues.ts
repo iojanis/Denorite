@@ -1,12 +1,12 @@
 import {
-  Module,
+  Argument,
   Command,
   Description,
+  Module,
   Permission,
-  Argument,
 } from "../decorators.ts";
 import type { ScriptContext } from "../types.ts";
-import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import { alert, button, container, divider, text } from "../tellraw-ui.ts";
 
 interface Issue {
   id: string;
@@ -289,10 +289,9 @@ export class Issues {
       const issues = await this.getAllIssues(kv);
       const filter = args.filter?.toLowerCase() || "open";
 
-      const filteredIssues =
-        filter === "all"
-          ? issues
-          : issues.filter((issue) => issue.state === filter);
+      const filteredIssues = filter === "all"
+        ? issues
+        : issues.filter((issue) => issue.state === filter);
 
       if (filteredIssues.length === 0) {
         messages = await tellraw(
@@ -361,13 +360,13 @@ export class Issues {
             { text: ` by ${issue.author}`, color: "gray" },
             issue.labels.length > 0
               ? [
-                  { text: " [", color: "white" },
-                  ...issue.labels.map((label) => ({
-                    text: label + " ",
-                    color: "aqua",
-                  })),
-                  { text: "]", color: "white" },
-                ]
+                { text: " [", color: "white" },
+                ...issue.labels.map((label) => ({
+                  text: label + " ",
+                  color: "aqua",
+                })),
+                { text: "]", color: "white" },
+              ]
               : [],
             { text: "\n" },
           ]),
@@ -444,12 +443,12 @@ export class Issues {
 
         ...(issue.closedAt
           ? [
-              text("Closed by ", { style: { color: "gray" } }),
-              text(issue.closedBy, { style: { color: "red" } }),
-              text(` on ${new Date(issue.closedAt).toLocaleString()}\n`, {
-                style: { color: "gray" },
-              }),
-            ]
+            text("Closed by ", { style: { color: "gray" } }),
+            text(issue.closedBy, { style: { color: "red" } }),
+            text(` on ${new Date(issue.closedAt).toLocaleString()}\n`, {
+              style: { color: "gray" },
+            }),
+          ]
           : []),
 
         text("\nDescription:\n", { style: { color: "gold" } }),
@@ -459,14 +458,14 @@ export class Issues {
         text("Labels: ", { style: { color: "gray" } }),
         ...(issue.labels.length
           ? issue.labels.map((label) =>
-              button(`[${label}] `, {
-                variant: "ghost",
-                onClick: {
-                  action: "run_command",
-                  value: `/issues label ${issue.number} ${label}`,
-                },
-              }),
-            )
+            button(`[${label}] `, {
+              variant: "ghost",
+              onClick: {
+                action: "run_command",
+                value: `/issues label ${issue.number} ${label}`,
+              },
+            })
+          )
           : [text("None", { style: { color: "gray" } })]),
         text("\n"),
 
@@ -474,14 +473,14 @@ export class Issues {
         text("Assignees: ", { style: { color: "gray" } }),
         ...(issue.assignees.length
           ? issue.assignees.map((assignee) =>
-              button(`@${assignee} `, {
-                variant: "ghost",
-                onClick: {
-                  action: "suggest_command",
-                  value: `/msg ${assignee} About issue #${issue.number}: `,
-                },
-              }),
-            )
+            button(`@${assignee} `, {
+              variant: "ghost",
+              onClick: {
+                action: "suggest_command",
+                value: `/msg ${assignee} About issue #${issue.number}: `,
+              },
+            })
+          )
           : [text("None", { style: { color: "gray" } })]),
         text("\n\n"),
 
@@ -489,23 +488,23 @@ export class Issues {
         text("Actions: ", { style: { color: "gold" } }),
         ...(issue.state === "open"
           ? [
-              button("[Close Issue] ", {
-                variant: "destructive",
-                onClick: {
-                  action: "run_command",
-                  value: `/issues close ${issue.number}`,
-                },
-              }),
-            ]
+            button("[Close Issue] ", {
+              variant: "destructive",
+              onClick: {
+                action: "run_command",
+                value: `/issues close ${issue.number}`,
+              },
+            }),
+          ]
           : [
-              button("[Reopen Issue] ", {
-                variant: "success",
-                onClick: {
-                  action: "run_command",
-                  value: `/issues reopen ${issue.number}`,
-                },
-              }),
-            ]),
+            button("[Reopen Issue] ", {
+              variant: "success",
+              onClick: {
+                action: "run_command",
+                value: `/issues reopen ${issue.number}`,
+              },
+            }),
+          ]),
         button("[Add Comment] ", {
           variant: "default",
           onClick: {
@@ -698,8 +697,8 @@ export class Issues {
       }
 
       const labelsResult = await kv.get(["issues", "labels"]);
-      const availableLabels: Label[] =
-        labelsResult.value || this.DEFAULT_LABELS;
+      const availableLabels: Label[] = labelsResult.value ||
+        this.DEFAULT_LABELS;
       const label = availableLabels.find(
         (l) => l.name.toLowerCase() === args.label.toLowerCase(),
       );

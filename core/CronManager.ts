@@ -4,7 +4,7 @@ export class CronManager {
   private cronJobs: Map<string, {
     moduleId: string;
     promise: Promise<void>;
-    controller: AbortController
+    controller: AbortController;
   }> = new Map();
   private logger: Logger;
 
@@ -17,7 +17,7 @@ export class CronManager {
     methodName: string,
     cronExpression: string,
     handler: () => Promise<void>,
-    options?: { backoffSchedule?: number[] }
+    options?: { backoffSchedule?: number[] },
   ): void {
     const jobId = `${moduleId}:${methodName}`;
 
@@ -45,19 +45,23 @@ export class CronManager {
         jobId,
         cronExpression,
         options || {},
-        wrappedHandler
+        wrappedHandler,
       );
 
       // Store the job details
       this.cronJobs.set(jobId, {
         moduleId,
         promise: cronPromise,
-        controller
+        controller,
       });
 
-      this.logger.debug(`Registered cron job ${jobId} with expression ${cronExpression}`);
+      this.logger.debug(
+        `Registered cron job ${jobId} with expression ${cronExpression}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to register cron job ${jobId}: ${error.message}`);
+      this.logger.error(
+        `Failed to register cron job ${jobId}: ${error.message}`,
+      );
     }
   }
 
@@ -70,7 +74,9 @@ export class CronManager {
         this.cronJobs.delete(jobId);
         this.logger.debug(`Unregistered cron job ${jobId}`);
       } catch (error) {
-        this.logger.error(`Error unregistering cron job ${jobId}: ${error.message}`);
+        this.logger.error(
+          `Error unregistering cron job ${jobId}: ${error.message}`,
+        );
       }
     }
   }

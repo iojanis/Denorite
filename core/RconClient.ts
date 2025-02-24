@@ -41,7 +41,6 @@ export class RconClient {
         await this.authenticate();
         // console.log("Successfully connected and authenticated");
         break;
-
       } catch (error) {
         // console.error(`Connection attempt ${retryCount + 1} failed:`, error.message);
 
@@ -59,11 +58,13 @@ export class RconClient {
 
         if (retryCount >= this.maxRetries) {
           this.isConnecting = false;
-          throw new Error(`Failed to connect after ${this.maxRetries} attempts`);
+          throw new Error(
+            `Failed to connect after ${this.maxRetries} attempts`,
+          );
         }
 
         // console.log(`Waiting ${this.retryDelay/1000} seconds before next attempt...`);
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+        await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
       }
     }
 
@@ -149,7 +150,9 @@ export class RconClient {
     return buffer;
   }
 
-  private async readPacket(): Promise<{ id: number; type: number; payload: string }> {
+  private async readPacket(): Promise<
+    { id: number; type: number; payload: string }
+  > {
     if (!this.conn) throw new Error("Not connected");
 
     // Read length

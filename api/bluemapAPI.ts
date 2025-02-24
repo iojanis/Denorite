@@ -58,15 +58,18 @@ interface MarkerSetOptions {
 
 export function createBlueMapAPI(
   sendToMinecraft: (data: unknown) => Promise<unknown>,
-  log: (message: string) => void
+  log: (message: string) => void,
 ) {
-  const createBlueMapCommand = (subcommand: string, args: Record<string, any>) => {
+  const createBlueMapCommand = (
+    subcommand: string,
+    args: Record<string, any>,
+  ) => {
     return {
       type: "bluemap",
       data: {
         subcommand,
-        arguments: args
-      }
+        arguments: args,
+      },
     };
   };
 
@@ -79,38 +82,48 @@ export function createBlueMapAPI(
           label: options.label ?? id,
           toggleable: options.toggleable ?? true,
           defaultHidden: options.defaultHidden ?? false,
-          sorting: options.sorting ?? 0
-        })
+          sorting: options.sorting ?? 0,
+        }),
       }));
     },
 
     async removeMarkerSet(id: string) {
       return await sendToMinecraft(createBlueMapCommand("removeSet", {
-        id
+        id,
       }));
     },
 
     async listMarkerSets() {
       return await sendToMinecraft(createBlueMapCommand("listSets", {
-        data: ""
+        data: "",
       }));
     },
 
     // Marker Management
-    async addMarker(markerset: string, markerid: string, type: string, data: POIMarkerOptions | HTMLMarkerOptions | LineMarkerOptions | ShapeMarkerOptions | ExtrudeMarkerOptions) {
+    async addMarker(
+      markerset: string,
+      markerid: string,
+      type: string,
+      data:
+        | POIMarkerOptions
+        | HTMLMarkerOptions
+        | LineMarkerOptions
+        | ShapeMarkerOptions
+        | ExtrudeMarkerOptions,
+    ) {
       return await sendToMinecraft(createBlueMapCommand("add", {
         markerset,
         markerid,
         type,
-        data: JSON.stringify(data)
+        data: JSON.stringify(data),
       }));
     },
 
     async removeMarker(markerset: string, markerid: string) {
       return await sendToMinecraft(createBlueMapCommand("remove", {
         markerset,
-        markerid
+        markerid,
       }));
-    }
+    },
   };
 }

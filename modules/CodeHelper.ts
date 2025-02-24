@@ -1,14 +1,24 @@
-import { Module, Command, Description, Permission, Socket } from '../decorators.ts';
-import { ScriptContext } from '../types.ts';
+import {
+  Command,
+  Description,
+  Module,
+  Permission,
+  Socket,
+} from "../decorators.ts";
+import { ScriptContext } from "../types.ts";
 import { walk } from "https://deno.land/std@0.177.0/fs/mod.ts";
-import { dirname, basename, join } from "https://deno.land/std@0.177.0/path/mod.ts";
+import {
+  basename,
+  dirname,
+  join,
+} from "https://deno.land/std@0.177.0/path/mod.ts";
 
 @Module({
-  name: 'CodeHelper',
-  version: '1.0.1'
+  name: "CodeHelper",
+  version: "1.0.1",
 })
 export class Files {
-  private readonly ENCHANTMENTS_DIR = Deno.cwd() + '/modules';
+  private readonly ENCHANTMENTS_DIR = Deno.cwd() + "/modules";
 
   private async isDirectory(path: string): Promise<boolean> {
     try {
@@ -19,21 +29,26 @@ export class Files {
     }
   }
 
-  @Socket('read_directory')
-  @Permission('operator')
-  async handleReadDirectory({ params, log }: ScriptContext): Promise<{ files: { path: string, isDirectory: boolean }[] }> {
+  @Socket("read_directory")
+  @Permission("operator")
+  async handleReadDirectory(
+    { params, log }: ScriptContext,
+  ): Promise<{ files: { path: string; isDirectory: boolean }[] }> {
     try {
-      const path = params.path as string || '';
+      const path = params.path as string || "";
       const fullPath = join(this.ENCHANTMENTS_DIR, path);
       const files = [];
 
       for await (const entry of walk(fullPath, { maxDepth: 1 })) {
         if (entry.path === fullPath) continue;
-        const relativePath = entry.path.replace(this.ENCHANTMENTS_DIR + '/', '');
+        const relativePath = entry.path.replace(
+          this.ENCHANTMENTS_DIR + "/",
+          "",
+        );
         const isDirectory = await this.isDirectory(entry.path);
         files.push({
           path: relativePath,
-          isDirectory
+          isDirectory,
         });
       }
 
@@ -45,9 +60,11 @@ export class Files {
     }
   }
 
-  @Socket('read_file')
-  @Permission('operator')
-  async handleReadFile({ params, log }: ScriptContext): Promise<{ content: string }> {
+  @Socket("read_file")
+  @Permission("operator")
+  async handleReadFile(
+    { params, log }: ScriptContext,
+  ): Promise<{ content: string }> {
     try {
       const path = params.path as string;
       const fullPath = join(this.ENCHANTMENTS_DIR, path);
@@ -60,8 +77,8 @@ export class Files {
     }
   }
 
-  @Socket('write_file')
-  @Permission('operator')
+  @Socket("write_file")
+  @Permission("operator")
   async handleWriteFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const { path, content } = params;
@@ -74,8 +91,8 @@ export class Files {
     }
   }
 
-  @Socket('rename_file')
-  @Permission('operator')
+  @Socket("rename_file")
+  @Permission("operator")
   async handleRenameFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const { oldPath, newPath } = params;
@@ -103,8 +120,8 @@ export class Files {
     }
   }
 
-  @Socket('delete_file')
-  @Permission('operator')
+  @Socket("delete_file")
+  @Permission("operator")
   async handleDeleteFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;
@@ -124,8 +141,8 @@ export class Files {
     }
   }
 
-  @Socket('enable_file')
-  @Permission('operator')
+  @Socket("enable_file")
+  @Permission("operator")
   async handleEnableFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;
@@ -135,27 +152,27 @@ export class Files {
       if (isDirectory) {
         for await (const entry of walk(fullPath, { includeDirs: false })) {
           const fileName = basename(entry.path);
-          if (fileName.endsWith('_')) {
+          if (fileName.endsWith("_")) {
             const newPath = join(dirname(entry.path), fileName.slice(0, -1));
             await Deno.rename(entry.path, newPath);
           }
         }
       } else {
         const fileName = basename(fullPath);
-        if (fileName.endsWith('_')) {
+        if (fileName.endsWith("_")) {
           const newPath = join(dirname(fullPath), fileName.slice(0, -1));
           await Deno.rename(fullPath, newPath);
         }
       }
-      log(`Enabled ${isDirectory ? 'directory' : 'file'}: ${path}`);
+      log(`Enabled ${isDirectory ? "directory" : "file"}: ${path}`);
     } catch (error) {
       log(`Error enabling file/directory: ${error.message}`);
       throw error;
     }
   }
 
-  @Socket('disable_file')
-  @Permission('operator')
+  @Socket("disable_file")
+  @Permission("operator")
   async handleDisableFile({ params, log }: ScriptContext): Promise<void> {
     try {
       const path = params.path as string;
@@ -165,19 +182,19 @@ export class Files {
       if (isDirectory) {
         for await (const entry of walk(fullPath, { includeDirs: false })) {
           const fileName = basename(entry.path);
-          if (!fileName.endsWith('_')) {
+          if (!fileName.endsWith("_")) {
             const newPath = join(dirname(entry.path), `${fileName}_`);
             await Deno.rename(entry.path, newPath);
           }
         }
       } else {
         const fileName = basename(fullPath);
-        if (!fileName.endsWith('_')) {
+        if (!fileName.endsWith("_")) {
           const newPath = join(dirname(fullPath), `${fileName}_`);
           await Deno.rename(fullPath, newPath);
         }
       }
-      log(`Disabled ${isDirectory ? 'directory' : 'file'}: ${path}`);
+      log(`Disabled ${isDirectory ? "directory" : "file"}: ${path}`);
     } catch (error) {
       log(`Error disabling file/directory: ${error.message}`);
       throw error;

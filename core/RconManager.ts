@@ -22,7 +22,7 @@ export class RconManager {
     auth: AuthService,
     host: string = "localhost",
     port: number = 25575,
-    cleanupInterval: number = 300000 // 5 minutes
+    cleanupInterval: number = 300000, // 5 minutes
   ) {
     this.logger = logger;
     this.auth = auth;
@@ -41,13 +41,12 @@ export class RconManager {
       await rcon.connect();
 
       // const socketId = this.getSocketId(socket);
-      const socketId = "0"
+      const socketId = "0";
       this.connections.set(socketId, {
         client: rcon,
         lastUsed: Date.now(),
-        socket
+        socket,
       });
-
 
       // console.log("New RCON Connection: " + socketId)
 
@@ -55,11 +54,10 @@ export class RconManager {
 
       // Handle socket closure
       socket.addEventListener("close", () => {
-        this.closeConnection(socket).catch(error => {
+        this.closeConnection(socket).catch((error) => {
           this.logger.error(`Error closing RCON connection: ${error.message}`);
         });
       });
-
     } catch (error) {
       // this.logger.error(`Failed to create RCON connection: ${error.message}`);
       throw error;
@@ -109,9 +107,13 @@ export class RconManager {
       try {
         await connection.client.disconnect();
         this.connections.delete(socketId);
-        this.logger.info(`Cleaned up inactive RCON connection for socket ${socketId}`);
+        this.logger.info(
+          `Cleaned up inactive RCON connection for socket ${socketId}`,
+        );
       } catch (error) {
-        this.logger.error(`Error cleaning up RCON connection: ${error.message}`);
+        this.logger.error(
+          `Error cleaning up RCON connection: ${error.message}`,
+        );
       }
     }
   }

@@ -1,12 +1,12 @@
 import {
-  Module,
+  Argument,
   Command,
   Description,
+  Module,
   Permission,
-  Argument,
 } from "../decorators.ts";
 import type { ScriptContext } from "../types.ts";
-import { text, button, container, alert, divider } from "../tellraw-ui.ts";
+import { alert, button, container, divider, text } from "../tellraw-ui.ts";
 
 interface Thread {
   id: string;
@@ -158,7 +158,7 @@ export class Library {
             text(` by ${thread.author}`, { style: { color: "gray" } }),
             text(` (${thread.copies} copies)`, { style: { color: "green" } }),
             text("\n"),
-          ]),
+          ])
         ),
       ]);
 
@@ -225,17 +225,15 @@ export class Library {
         text("\n\n"),
         text(thread.content, { style: { color: "white" } }),
         text("\n\n"),
-        ...(owners.includes(sender)
-          ? []
-          : [
-              button("Buy Copy", {
-                variant: "success",
-                onClick: {
-                  action: "run_command",
-                  value: `/library buy ${thread.id}`,
-                },
-              }),
-            ]),
+        ...(owners.includes(sender) ? [] : [
+          button("Buy Copy", {
+            variant: "success",
+            onClick: {
+              action: "run_command",
+              value: `/library buy ${thread.id}`,
+            },
+          }),
+        ]),
         text(" "),
         button("Comment...", {
           variant: "ghost",
@@ -246,51 +244,52 @@ export class Library {
         }),
         ...(thread.author === sender
           ? [
-              text(" "),
-              button("Edit...", {
-                variant: "ghost",
-                onClick: {
-                  action: "suggest_command",
-                  value: `/library edit ${thread.id} ${thread.content}`,
-                },
-              }),
-              text(" "),
-              button("Delete", {
-                variant: "destructive",
-                onClick: {
-                  action: "suggest_command",
-                  value: `/library delete ${thread.id}`,
-                },
-              }),
-            ]
+            text(" "),
+            button("Edit...", {
+              variant: "ghost",
+              onClick: {
+                action: "suggest_command",
+                value: `/library edit ${thread.id} ${thread.content}`,
+              },
+            }),
+            text(" "),
+            button("Delete", {
+              variant: "destructive",
+              onClick: {
+                action: "suggest_command",
+                value: `/library delete ${thread.id}`,
+              },
+            }),
+          ]
           : []),
         ...(comments.length > 0
           ? [
-              divider(),
-              text("Comments:", {
-                style: { color: "yellow", styles: ["bold"] },
-              }),
-              text("\n"),
-              ...comments.map((comment) =>
-                container([
-                  text(`${comment.author}: `, { style: { color: "gray" } }),
-                  text(comment.content, { style: { color: "white" } }),
-                  ...(comment.author === sender
-                    ? [
-                        text(" "),
-                        button("Delete", {
-                          variant: "destructive",
-                          onClick: {
-                            action: "run_command",
-                            value: `/library deleteComment ${thread.id} ${comment.id}`,
-                          },
-                        }),
-                      ]
-                    : []),
-                  text("\n"),
-                ]),
-              ),
-            ]
+            divider(),
+            text("Comments:", {
+              style: { color: "yellow", styles: ["bold"] },
+            }),
+            text("\n"),
+            ...comments.map((comment) =>
+              container([
+                text(`${comment.author}: `, { style: { color: "gray" } }),
+                text(comment.content, { style: { color: "white" } }),
+                ...(comment.author === sender
+                  ? [
+                    text(" "),
+                    button("Delete", {
+                      variant: "destructive",
+                      onClick: {
+                        action: "run_command",
+                        value:
+                          `/library deleteComment ${thread.id} ${comment.id}`,
+                      },
+                    }),
+                  ]
+                  : []),
+                text("\n"),
+              ])
+            ),
+          ]
           : []),
       ]);
 
@@ -388,8 +387,9 @@ export class Library {
       if (!thread) throw new Error("Thread not found");
 
       const owners = await this.getThreadOwners(kv, args.threadId);
-      if (owners.includes(sender))
+      if (owners.includes(sender)) {
         throw new Error("You already own this thread");
+      }
 
       const balanceResult = await kv.get([
         "plugins",
@@ -653,7 +653,7 @@ export class Library {
             text("• ", { style: { color: "yellow" } }),
             text(category.title, { style: { color: "white" } }),
             text("\n"),
-          ]),
+          ])
         ),
         text("\n"),
         button("Create Thread...", {
@@ -701,7 +701,7 @@ export class Library {
   }: ScriptContext): Promise<{ messages: any[]; thread?: Thread }> {
     const { sender, args } = params;
 
-    console.log(params)
+    console.log(params);
 
     try {
       const threadId = crypto.randomUUID();

@@ -30,7 +30,7 @@ export class DenoriteProtocol {
     ["playerName", 6],
     ["position", 7],
     ["dimension", 8],
-    ["type", 9]
+    ["type", 9],
   ]);
 
   static encodeMessage(type: number, id: number, data: any): Uint8Array {
@@ -94,7 +94,7 @@ export class DenoriteProtocol {
         if (Array.isArray(data)) {
           writer.writeUint8(5);
           writer.writeUint16(data.length);
-          data.forEach(item => this.writeData(writer, item));
+          data.forEach((item) => this.writeData(writer, item));
         } else {
           writer.writeUint8(6);
           const entries = Object.entries(data);
@@ -112,11 +112,16 @@ export class DenoriteProtocol {
     const type = reader.readUint8();
 
     switch (type) {
-      case 0: return null;
-      case 1: return reader.readString();
-      case 2: return reader.readInt32();
-      case 3: return reader.readFloat64();
-      case 4: return reader.readBoolean();
+      case 0:
+        return null;
+      case 1:
+        return reader.readString();
+      case 2:
+        return reader.readInt32();
+      case 3:
+        return reader.readFloat64();
+      case 4:
+        return reader.readBoolean();
       case 5: {
         const length = reader.readUint16();
         const array = new Array(length);
@@ -163,7 +168,7 @@ class DataWriter {
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setFloat64(0, value, false);
     const view = new Uint8Array(buffer);
-    view.forEach(byte => this.buffer.push(byte));
+    view.forEach((byte) => this.buffer.push(byte));
   }
 
   writeBoolean(value: boolean) {
@@ -174,7 +179,7 @@ class DataWriter {
     const encoder = new TextEncoder();
     const bytes = encoder.encode(str);
     this.writeUint16(bytes.length);
-    bytes.forEach(byte => this.buffer.push(byte));
+    bytes.forEach((byte) => this.buffer.push(byte));
   }
 
   getBuffer(): Uint8Array {

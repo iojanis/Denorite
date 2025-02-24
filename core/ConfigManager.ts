@@ -23,8 +23,8 @@ export class ConfigManager {
 
     // Load configuration from environment variables
     for (const [key, value] of Object.entries(Deno.env.toObject())) {
-      if (key.startsWith('DENORITE_')) {
-        const configKey = key.replace('DENORITE_', '');
+      if (key.startsWith("DENORITE_")) {
+        const configKey = key.replace("DENORITE_", "");
         await this.set(configKey, value);
       }
     }
@@ -37,7 +37,7 @@ export class ConfigManager {
       return this.cache.get(key);
     }
 
-    const value = await this.kv.get(["config", key]);
+    const value = this.kv.get(["config", key]);
     if (value !== null) {
       this.cache.set(key, value);
     }
@@ -63,7 +63,7 @@ export class ConfigManager {
   }
 
   private notifyWatchers(key: string, value: any): void {
-    this.watchers.get(key)?.forEach(callback => callback(value));
+    this.watchers.get(key)?.forEach((callback) => callback(value));
   }
 
   async getMultiple(keys: string[]): Promise<Record<string, any>> {

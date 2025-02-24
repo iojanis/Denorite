@@ -26,18 +26,18 @@ export class RateLimiter {
     guest: {
       windowMs: 60000, // 1 minute
       maxRequests: 10,
-      costMultiplier: 1
+      costMultiplier: 1,
     },
     player: {
       windowMs: 60000,
       maxRequests: 100,
-      costMultiplier: 1
+      costMultiplier: 1,
     },
     operator: {
       windowMs: 60000,
       maxRequests: 300,
-      costMultiplier: 1
-    }
+      costMultiplier: 1,
+    },
   };
 
   constructor(kv: Deno.Kv) {
@@ -66,7 +66,7 @@ export class RateLimiter {
   async banIp(ip: string, reason: string): Promise<void> {
     const record: BannedIpRecord = {
       bannedAt: Date.now(),
-      reason
+      reason,
     };
     await this.kv.set(this.getBanKey(ip), record);
   }
@@ -76,13 +76,18 @@ export class RateLimiter {
   }
 
   private getRateLimitKey(ip: string, method: string): string[] {
-    return ["rate_limit", ip, method, Math.floor(Date.now() / 60000).toString()];
+    return [
+      "rate_limit",
+      ip,
+      method,
+      Math.floor(Date.now() / 60000).toString(),
+    ];
   }
 
   private async checkRateLimit(
     ip: string,
     method: string,
-    tier: keyof RateLimitTier = 'guest'
+    tier: keyof RateLimitTier = "guest",
   ): Promise<{ allowed: boolean; resetTime: number; remaining: number }> {
     if (await this.isIpBanned(ip)) {
       return { allowed: false, resetTime: 0, remaining: 0 };
@@ -98,7 +103,7 @@ export class RateLimiter {
     if (!record || now >= record.resetTime) {
       record = {
         count: 0,
-        resetTime: now + config.windowMs
+        resetTime: now + config.windowMs,
       };
       this.cache.set(cacheKey, record);
     }
@@ -113,7 +118,7 @@ export class RateLimiter {
       await this.kv.atomic()
         .set(this.getRateLimitKey(ip, method), {
           count: newCount,
-          resetTime: record.resetTime
+          resetTime: record.resetTime,
         })
         .commit();
     }
@@ -121,14 +126,14 @@ export class RateLimiter {
     return {
       allowed,
       resetTime: record.resetTime,
-      remaining
+      remaining,
     };
   }
 
   async handleSocketRateLimit(
     ip: string,
     method: string,
-    userRole: 'guest' | 'player' | 'operator' = 'guest'
+    userRole: "guest" | "player" | "operator" = "guest",
   ): Promise<{ allowed: boolean; error?: string }> {
     const result = await this.checkRateLimit(ip, method, userRole);
 
@@ -136,7 +141,8 @@ export class RateLimiter {
       const resetInSeconds = Math.ceil((result.resetTime - Date.now()) / 1000);
       return {
         allowed: false,
-        error: `Rate limit exceeded. Please try again in ${resetInSeconds} seconds.`
+        error:
+          `Rate limit exceeded. Please try again in ${resetInSeconds} seconds.`,
       };
     }
 
@@ -145,16 +151,23 @@ export class RateLimiter {
 
   async handleMinecraftServerRateLimit(
     ip: string,
-    isAuthenticated: boolean
+    isAuthenticated: boolean,
   ): Promise<{ allowed: boolean; error?: string }> {
     if (!isAuthenticated) {
-      const result = await this.checkRateLimit(ip, 'minecraft_connection', 'guest');
+      const result = await this.checkRateLimit(
+        ip,
+        "minecraft_connection",
+        "guest",
+      );
 
       if (!result.allowed) {
-        const resetInSeconds = Math.ceil((result.resetTime - Date.now()) / 1000);
+        const resetInSeconds = Math.ceil(
+          (result.resetTime - Date.now()) / 1000,
+        );
         return {
           allowed: false,
-          error: `Too many connection attempts. Please try again in ${resetInSeconds} seconds.`
+          error:
+            `Too many connection attempts. Please try again in ${resetInSeconds} seconds.`,
         };
       }
     }

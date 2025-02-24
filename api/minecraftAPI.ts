@@ -1,15 +1,18 @@
-import type {Api, LogFunction, SendToMinecraft} from "../types.d.ts";
+import type { Api, LogFunction, SendToMinecraft } from "../types.d.ts";
 
 // Helper function to parse string values into appropriate types
 export function parseValue(value: string): unknown {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
   if (value.match(/^-?\d+$/)) return parseInt(value, 10);
   if (value.match(/^-?\d*\.\d+$/)) return parseFloat(value);
-  return value.replace(/^"|"$/g, ''); // Remove surrounding quotes if present
+  return value.replace(/^"|"$/g, ""); // Remove surrounding quotes if present
 }
 
-export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFunction): Api {
+export function createMinecraftAPI(
+  sendToMinecraft: SendToMinecraft,
+  log: LogFunction,
+): Api {
   async function executeCommand(command: string): Promise<string> {
     const errorPatterns: [RegExp, string][] = [
       [/Unknown or incomplete command/, "Unknown or incomplete command"],
@@ -18,15 +21,18 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       [/You don't have permission/, "Insufficient permissions"],
       [/Player is not online/, "Player is not online"],
       [/Unknown (item|block|entity)/, "Unknown game element"],
-      [/Invalid (position|number|game mode|difficulty|effect|enchantment|scoreboard objective|team|selector|JSON|UUID|time|dimension|biome|structure|advancement|recipe|loot table|bossbar|attribute|particle|sound|function|datapack)/, "Invalid command parameter"],
+      [
+        /Invalid (position|number|game mode|difficulty|effect|enchantment|scoreboard objective|team|selector|JSON|UUID|time|dimension|biome|structure|advancement|recipe|loot table|bossbar|attribute|particle|sound|function|datapack)/,
+        "Invalid command parameter",
+      ],
     ];
 
     try {
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       // log(`Command result: ${JSON.stringify(result)}`);
 
       // Check if the result is a string (which seems to be the case now)
-      if (typeof result.result === 'string') {
+      if (typeof result.result === "string") {
         const resultString = result.result;
 
         // Check for error patterns in the result string
@@ -42,38 +48,39 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
       // If result is not a string, throw an error
       throw new Error(`Unexpected result format: ${JSON.stringify(result)}`);
-
     } catch (error) {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error(`Unknown error occurred while executing command: ${command}`);
+      throw new Error(
+        `Unknown error occurred while executing command: ${command}`,
+      );
     }
   }
 
   return {
     executeCommand(command: string): Promise<string> {
-      return new Promise(resolve => 'sdsd')
+      return new Promise((resolve) => "sdsd");
     },
 
-    async xp(mode, target, amount, type = 'points') {
-      let command = '';
+    async xp(mode, target, amount, type = "points") {
+      let command = "";
       switch (mode) {
-        case 'get':
+        case "get":
           command = `xp query ${target} ${type.toLowerCase()}`;
           break;
-        case 'set':
+        case "set":
           command = `xp set ${target} ${amount} ${type.toLowerCase()}`;
           break;
-        case 'add':
+        case "add":
           command = `xp add ${target} ${amount} ${type.toLowerCase()}`;
           break;
-        case 'remove':
+        case "remove":
           command = `xp add ${target} -${amount} ${type.toLowerCase()}`;
           break;
       }
 
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       // log(`XP command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -87,7 +94,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async teleport(target, x, y, z) {
       const command = `tp ${target} ${x} ${y} ${z}`;
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       // log(`Teleport command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -99,7 +106,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async give(target, item, amount = 1) {
       const command = `give ${target} ${item} ${amount}`;
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       // log(`Give command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -109,7 +116,11 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return result.result;
     },
 
-    async clear(target: string, item?: string, maxCount?: number): Promise<string> {
+    async clear(
+      target: string,
+      item?: string,
+      maxCount?: number,
+    ): Promise<string> {
       let command = `clear ${target}`;
       if (item) command += ` ${item}`;
       if (maxCount !== undefined) command += ` ${maxCount}`;
@@ -121,7 +132,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async setBlock(x, y, z, block) {
       const command = `setblock ${x} ${y} ${z} ${block}`;
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       // log(`SetBlock command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -133,7 +144,10 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async executeAs(target, command) {
       const fullCommand = `execute as ${target} run ${command}`;
-      const result = await sendToMinecraft({ type: 'command', data: fullCommand });
+      const result = await sendToMinecraft({
+        type: "command",
+        data: fullCommand,
+      });
       // log(`Execute command result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -145,7 +159,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
 
     async getPlayerPosition(player) {
       const command = `data get entity ${player} Pos`;
-      const result = await sendToMinecraft({ type: 'command', data: command });
+      const result = await sendToMinecraft({ type: "command", data: command });
       log(`Get player position result: ${JSON.stringify(result)}`);
 
       if (result.error) {
@@ -158,10 +172,10 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
         return {
           x: parseFloat(match[1]),
           y: parseFloat(match[2]),
-          z: parseFloat(match[3])
+          z: parseFloat(match[3]),
         };
       } else {
-        throw new Error('Failed to parse player position');
+        throw new Error("Failed to parse player position");
       }
     },
 
@@ -169,23 +183,42 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(`kill ${target}`);
     },
 
-    async weather(type: 'clear' | 'rain' | 'thunder', duration?: number): Promise<string> {
-      const command = duration ? `weather ${type} ${duration}` : `weather ${type}`;
+    async weather(
+      type: "clear" | "rain" | "thunder",
+      duration?: number,
+    ): Promise<string> {
+      const command = duration
+        ? `weather ${type} ${duration}`
+        : `weather ${type}`;
       return await executeCommand(command);
     },
 
-    async time(action: 'set' | 'add', value: number | 'day' | 'night'): Promise<string> {
+    async time(
+      action: "set" | "add",
+      value: number | "day" | "night",
+    ): Promise<string> {
       return await executeCommand(`time ${action} ${value}`);
     },
 
-    async gamemode(mode: 'survival' | 'creative' | 'adventure' | 'spectator', target?: string): Promise<string> {
-      const command = target ? `gamemode ${mode} ${target}` : `gamemode ${mode}`;
+    async gamemode(
+      mode: "survival" | "creative" | "adventure" | "spectator",
+      target?: string,
+    ): Promise<string> {
+      const command = target
+        ? `gamemode ${mode} ${target}`
+        : `gamemode ${mode}`;
       return await executeCommand(command);
     },
 
-    async effect(action: 'give' | 'clear', target: string, effect?: string, duration?: number, amplifier?: number): Promise<string> {
+    async effect(
+      action: "give" | "clear",
+      target: string,
+      effect?: string,
+      duration?: number,
+      amplifier?: number,
+    ): Promise<string> {
       let command = `effect ${action} ${target}`;
-      if (action === 'give' && effect) {
+      if (action === "give" && effect) {
         command += ` ${effect}`;
         if (duration !== undefined) command += ` ${duration}`;
         if (amplifier !== undefined) command += ` ${amplifier}`;
@@ -193,13 +226,27 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(command);
     },
 
-    async enchant(target: string, enchantment: string, level?: number): Promise<string> {
-      const command = level ? `enchant ${target} ${enchantment} ${level}` : `enchant ${target} ${enchantment}`;
+    async enchant(
+      target: string,
+      enchantment: string,
+      level?: number,
+    ): Promise<string> {
+      const command = level
+        ? `enchant ${target} ${enchantment} ${level}`
+        : `enchant ${target} ${enchantment}`;
       return await executeCommand(command);
     },
 
-    async summon(entity: string, x: number, y: number, z: number, nbt?: string): Promise<string> {
-      const command = nbt ? `summon ${entity} ${x} ${y} ${z} ${nbt}` : `summon ${entity} ${x} ${y} ${z}`;
+    async summon(
+      entity: string,
+      x: number,
+      y: number,
+      z: number,
+      nbt?: string,
+    ): Promise<string> {
+      const command = nbt
+        ? `summon ${entity} ${x} ${y} ${z} ${nbt}`
+        : `summon ${entity} ${x} ${y} ${z}`;
       return await executeCommand(command);
     },
 
@@ -207,15 +254,26 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(`setworldspawn ${x} ${y} ${z}`);
     },
 
-    async spawnPoint(target: string, x: number, y: number, z: number): Promise<string> {
+    async spawnPoint(
+      target: string,
+      x: number,
+      y: number,
+      z: number,
+    ): Promise<string> {
       return await executeCommand(`spawnpoint ${target} ${x} ${y} ${z}`);
     },
 
-    async difficulty(level: 'peaceful' | 'easy' | 'normal' | 'hard'): Promise<string> {
+    async difficulty(
+      level: "peaceful" | "easy" | "normal" | "hard",
+    ): Promise<string> {
       return await executeCommand(`difficulty ${level}`);
     },
 
-    async getBlockData(x: number, y: number, z: number): Promise<Record<string, unknown>> {
+    async getBlockData(
+      x: number,
+      y: number,
+      z: number,
+    ): Promise<Record<string, unknown>> {
       const result = await executeCommand(`data get block ${x} ${y} ${z}`);
       const nbtRegex = /{.*}/s;
       const match = result.match(nbtRegex);
@@ -223,13 +281,16 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
         try {
           return JSON.parse(match[0].replace(/(\w+):/g, '"$1":'));
         } catch (_error) {
-          throw new Error('Failed to parse block data');
+          throw new Error("Failed to parse block data");
         }
       }
-      throw new Error('No block data found');
+      throw new Error("No block data found");
     },
 
-    async getEntityData(target: string, path?: string): Promise<Record<string, unknown>> {
+    async getEntityData(
+      target: string,
+      path?: string,
+    ): Promise<Record<string, unknown>> {
       const command = path
         ? `data get entity ${target} ${path}`
         : `data get entity ${target}`;
@@ -244,13 +305,13 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
           const value = match[1].trim();
           try {
             // Attempt to parse as JSON if it looks like an object or array
-            if (value.startsWith('{') || value.startsWith('[')) {
+            if (value.startsWith("{") || value.startsWith("[")) {
               return JSON.parse(value.replace(/(\w+):/g, '"$1":'));
             }
             // Otherwise, return as a simple key-value pair
-            return { [path.split('.').pop()!]: this.parseValue(value) };
+            return { [path.split(".").pop()!]: this.parseValue(value) };
           } catch (_error) {
-            throw new Error('Failed to parse entity data');
+            throw new Error("Failed to parse entity data");
           }
         }
       }
@@ -262,20 +323,41 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
         try {
           return JSON.parse(match[0].replace(/(\w+):/g, '"$1":'));
         } catch (_error) {
-          throw new Error('Failed to parse entity data');
+          throw new Error("Failed to parse entity data");
         }
       }
 
-      throw new Error('No entity data found');
+      throw new Error("No entity data found");
     },
 
-    async fill(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, block: string, mode?: 'replace' | 'destroy' | 'hollow' | 'keep' | 'outline'): Promise<string> {
+    async fill(
+      x1: number,
+      y1: number,
+      z1: number,
+      x2: number,
+      y2: number,
+      z2: number,
+      block: string,
+      mode?: "replace" | "destroy" | "hollow" | "keep" | "outline",
+    ): Promise<string> {
       let command = `fill ${x1} ${y1} ${z1} ${x2} ${y2} ${z2} ${block}`;
       if (mode) command += ` ${mode}`;
       return await executeCommand(command);
     },
 
-    async clone(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, x: number, y: number, z: number, maskMode?: 'replace' | 'masked', cloneMode?: 'force' | 'move' | 'normal'): Promise<string> {
+    async clone(
+      x1: number,
+      y1: number,
+      z1: number,
+      x2: number,
+      y2: number,
+      z2: number,
+      x: number,
+      y: number,
+      z: number,
+      maskMode?: "replace" | "masked",
+      cloneMode?: "force" | "move" | "normal",
+    ): Promise<string> {
       let command = `clone ${x1} ${y1} ${z1} ${x2} ${y2} ${z2} ${x} ${y} ${z}`;
       if (maskMode) command += ` ${maskMode}`;
       if (cloneMode) command += ` ${cloneMode}`;
@@ -293,20 +375,38 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return players;
     },
 
-    setScoreboardPlayer(player: string, objective: string, score: number): Promise<string> {
-      return executeCommand(`scoreboard players set ${player} ${objective} ${score}`);
+    setScoreboardPlayer(
+      player: string,
+      objective: string,
+      score: number,
+    ): Promise<string> {
+      return executeCommand(
+        `scoreboard players set ${player} ${objective} ${score}`,
+      );
     },
 
-    addScoreboardPlayer(player: string, objective: string, score: number): Promise<string> {
-      return executeCommand(`scoreboard players add ${player} ${objective} ${score}`);
+    addScoreboardPlayer(
+      player: string,
+      objective: string,
+      score: number,
+    ): Promise<string> {
+      return executeCommand(
+        `scoreboard players add ${player} ${objective} ${score}`,
+      );
     },
 
-    removeScoreboardPlayer(player: string, objective: string, score: number): Promise<string> {
-      return executeCommand(`scoreboard players remove ${player} ${objective} ${score}`);
+    removeScoreboardPlayer(
+      player: string,
+      objective: string,
+      score: number,
+    ): Promise<string> {
+      return executeCommand(
+        `scoreboard players remove ${player} ${objective} ${score}`,
+      );
     },
 
     async scoreboardObjectives(): Promise<string[]> {
-      const result = await executeCommand('scoreboard objectives list');
+      const result = await executeCommand("scoreboard objectives list");
       const regex = /- ([\w.]+):/g;
       const objectives: string[] = [];
       let match;
@@ -316,9 +416,15 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return objectives;
     },
 
-    async scoreboardObjectiveAdd(objective: string, criteria: string, displayName?: string): Promise<string> {
+    async scoreboardObjectiveAdd(
+      objective: string,
+      criteria: string,
+      displayName?: string,
+    ): Promise<string> {
       const command = displayName
-        ? `scoreboard objectives add ${objective} ${criteria} ${JSON.stringify(displayName)}`
+        ? `scoreboard objectives add ${objective} ${criteria} ${
+          JSON.stringify(displayName)
+        }`
         : `scoreboard objectives add ${objective} ${criteria}`;
       const result = await executeCommand(command);
       const regex = /Added new objective '(\w+)'/;
@@ -327,13 +433,18 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async scoreboardObjectiveRemove(objective: string): Promise<string> {
-      const result = await executeCommand(`scoreboard objectives remove ${objective}`);
+      const result = await executeCommand(
+        `scoreboard objectives remove ${objective}`,
+      );
       const regex = /Removed objective '(\w+)'/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async scoreboardObjectiveSetDisplay(slot: string, objective?: string): Promise<string> {
+    async scoreboardObjectiveSetDisplay(
+      slot: string,
+      objective?: string,
+    ): Promise<string> {
       const command = objective
         ? `scoreboard objectives setdisplay ${slot} ${objective}`
         : `scoreboard objectives setdisplay ${slot}`;
@@ -349,14 +460,24 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       }
     },
 
-    async scoreboardPlayersOperation(target: string, targetObjective: string, operation: string, source: string, sourceObjective: string): Promise<string> {
-      const result = await executeCommand(`scoreboard players operation ${target} ${targetObjective} ${operation} ${source} ${sourceObjective}`);
+    async scoreboardPlayersOperation(
+      target: string,
+      targetObjective: string,
+      operation: string,
+      source: string,
+      sourceObjective: string,
+    ): Promise<string> {
+      const result = await executeCommand(
+        `scoreboard players operation ${target} ${targetObjective} ${operation} ${source} ${sourceObjective}`,
+      );
       const regex = /Set score of (\w+) for player (\w+) to (-?\d+)/;
       const match = result.match(regex);
       return match ? `${match[2]} ${match[1]}: ${match[3]}` : result;
     },
 
-    async getBossbar(id: string): Promise<Record<string, string | number | boolean>> {
+    async getBossbar(
+      id: string,
+    ): Promise<Record<string, string | number | boolean>> {
       const result = await executeCommand(`bossbar get ${id}`);
       const data: Record<string, string | number | boolean> = {};
       const regex = /(\w+): ([\w\s]+)/g;
@@ -367,15 +488,29 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return data;
     },
 
-    async setBossbar(id: string, property: 'name' | 'color' | 'style' | 'value' | 'max' | 'visible' | 'players', value: string | number | boolean): Promise<string> {
+    async setBossbar(
+      id: string,
+      property:
+        | "name"
+        | "color"
+        | "style"
+        | "value"
+        | "max"
+        | "visible"
+        | "players",
+      value: string | number | boolean,
+    ): Promise<string> {
       return await executeCommand(`bossbar set ${id} ${property} ${value}`);
     },
 
-    async getWorldBorder(): Promise<{ center: [number, number], diameter: number }> {
-      const centerResult = await executeCommand('worldborder get center');
-      const sizeResult = await executeCommand('worldborder get');
+    async getWorldBorder(): Promise<
+      { center: [number, number]; diameter: number }
+    > {
+      const centerResult = await executeCommand("worldborder get center");
+      const sizeResult = await executeCommand("worldborder get");
 
-      const centerRegex = /The world border is currently centered at ([\-\d.]+), ([\-\d.]+)/;
+      const centerRegex =
+        /The world border is currently centered at ([\-\d.]+), ([\-\d.]+)/;
       const sizeRegex = /The world border is currently (\d+) blocks wide/;
 
       const centerMatch = centerResult.match(centerRegex);
@@ -384,19 +519,21 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       if (centerMatch && sizeMatch) {
         return {
           center: [parseFloat(centerMatch[1]), parseFloat(centerMatch[2])],
-          diameter: parseFloat(sizeMatch[1])
+          diameter: parseFloat(sizeMatch[1]),
         };
       }
-      throw new Error('Failed to parse world border information');
+      throw new Error("Failed to parse world border information");
     },
 
     async setWorldBorder(diameter: number, time?: number): Promise<string> {
-      const command = time ? `worldborder set ${diameter} ${time}` : `worldborder set ${diameter}`;
+      const command = time
+        ? `worldborder set ${diameter} ${time}`
+        : `worldborder set ${diameter}`;
       return await executeCommand(command);
     },
 
-    async getTime(): Promise<{ day: number, daytime: number }> {
-      const result = await executeCommand('time query');
+    async getTime(): Promise<{ day: number; daytime: number }> {
+      const result = await executeCommand("time query");
       const dayRegex = /The time is (\d+)/;
       const daytimeRegex = /The daytime is (\d+)/;
 
@@ -406,21 +543,34 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       if (dayMatch && daytimeMatch) {
         return {
           day: parseInt(dayMatch[1]),
-          daytime: parseInt(daytimeMatch[1])
+          daytime: parseInt(daytimeMatch[1]),
         };
       }
-      throw new Error('Failed to parse time information');
+      throw new Error("Failed to parse time information");
     },
 
-    async advancement(action: 'grant' | 'revoke', target: string, advancement: string): Promise<string> {
-      const result = await executeCommand(`advancement ${action} ${target} ${advancement}`);
+    async advancement(
+      action: "grant" | "revoke",
+      target: string,
+      advancement: string,
+    ): Promise<string> {
+      const result = await executeCommand(
+        `advancement ${action} ${target} ${advancement}`,
+      );
       const regex = /Made (\d+) advancements/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async attribute(target: string, attribute: string, action: 'get' | 'base' | 'modifier', ...args: string[]): Promise<string> {
-      const result = await executeCommand(`attribute ${target} ${attribute} ${action} ${args.join(' ')}`);
+    async attribute(
+      target: string,
+      attribute: string,
+      action: "get" | "base" | "modifier",
+      ...args: string[]
+    ): Promise<string> {
+      const result = await executeCommand(
+        `attribute ${target} ${attribute} ${action} ${args.join(" ")}`,
+      );
       const regex = /(\d+(?:\.\d+)?)/;
       const match = result.match(regex);
       return match ? match[1] : result;
@@ -435,36 +585,51 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async banIp(target: string, reason?: string): Promise<string> {
-      const command = reason ? `ban-ip ${target} ${reason}` : `ban-ip ${target}`;
+      const command = reason
+        ? `ban-ip ${target} ${reason}`
+        : `ban-ip ${target}`;
       const result = await executeCommand(command);
       const regex = /Banned IP Address: ([\d\.]+)/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async banlist(type?: 'players' | 'ips'): Promise<string> {
-      const command = type ? `banlist ${type}` : 'banlist';
+    async banlist(type?: "players" | "ips"): Promise<string> {
+      const command = type ? `banlist ${type}` : "banlist";
       return await executeCommand(command);
     },
 
-    async damage(target: string, amount: number, type?: string): Promise<string> {
-      const command = type ? `damage ${target} ${amount} ${type}` : `damage ${target} ${amount}`;
+    async damage(
+      target: string,
+      amount: number,
+      type?: string,
+    ): Promise<string> {
+      const command = type
+        ? `damage ${target} ${amount} ${type}`
+        : `damage ${target} ${amount}`;
       const result = await executeCommand(command);
       const regex = /Damaged (\w+) for (\d+)/;
       const match = result.match(regex);
       return match ? `${match[1]}: ${match[2]}` : result;
     },
 
-    async datapack(action: 'list' | 'enable' | 'disable', name?: string): Promise<string> {
-      const command = name ? `datapack ${action} ${name}` : `datapack ${action}`;
+    async datapack(
+      action: "list" | "enable" | "disable",
+      name?: string,
+    ): Promise<string> {
+      const command = name
+        ? `datapack ${action} ${name}`
+        : `datapack ${action}`;
       return await executeCommand(command);
     },
 
-    async debug(action: 'start' | 'stop' | 'function'): Promise<string> {
+    async debug(action: "start" | "stop" | "function"): Promise<string> {
       return await executeCommand(`debug ${action}`);
     },
 
-    async defaultGamemode(mode: 'survival' | 'creative' | 'adventure' | 'spectator'): Promise<string> {
+    async defaultGamemode(
+      mode: "survival" | "creative" | "adventure" | "spectator",
+    ): Promise<string> {
       return await executeCommand(`defaultgamemode ${mode}`);
     },
 
@@ -475,15 +640,27 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async fillBiome(from: [number, number, number], to: [number, number, number], biome: string): Promise<string> {
-      const result = await executeCommand(`fillbiome ${from.join(' ')} ${to.join(' ')} ${biome}`);
+    async fillBiome(
+      from: [number, number, number],
+      to: [number, number, number],
+      biome: string,
+    ): Promise<string> {
+      const result = await executeCommand(
+        `fillbiome ${from.join(" ")} ${to.join(" ")} ${biome}`,
+      );
       const regex = /(\d+) blocks? filled/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async forceload(action: 'add' | 'remove' | 'query', from: [number, number], to?: [number, number]): Promise<string> {
-      const command = to ? `forceload ${action} ${from.join(' ')} ${to.join(' ')}` : `forceload ${action} ${from.join(' ')}`;
+    async forceload(
+      action: "add" | "remove" | "query",
+      from: [number, number],
+      to?: [number, number],
+    ): Promise<string> {
+      const command = to
+        ? `forceload ${action} ${from.join(" ")} ${to.join(" ")}`
+        : `forceload ${action} ${from.join(" ")}`;
       return await executeCommand(command);
     },
 
@@ -492,10 +669,16 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async help(command?: string): Promise<string> {
-      return await executeCommand(command ? `help ${command}` : 'help');
+      return await executeCommand(command ? `help ${command}` : "help");
     },
 
-    async item(action: 'replace' | 'modify', target: string, slot: string, item?: string, count?: number): Promise<string> {
+    async item(
+      action: "replace" | "modify",
+      target: string,
+      slot: string,
+      item?: string,
+      count?: number,
+    ): Promise<string> {
       let command = `item ${action} ${target} ${slot}`;
       if (item) command += ` ${item}`;
       if (count !== undefined) command += ` ${count}`;
@@ -514,7 +697,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async listPlayers(): Promise<string> {
-      const result = await executeCommand('list');
+      const result = await executeCommand("list");
       const regex = /There are (\d+) of a max of (\d+) players online:/;
       const match = result.match(regex);
       return match ? `${match[1]}/${match[2]}` : result;
@@ -528,14 +711,21 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async seed(): Promise<string> {
-      const result = await executeCommand('seed');
+      const result = await executeCommand("seed");
       const seedRegex = /Seed: \[(-?\d+)\]/;
       const match = result.match(seedRegex);
       return match ? match[1] : result;
     },
 
-    async loot(target: 'spawn' | 'give' | 'insert' | 'replace', destination: string, source: string, ...args: string[]): Promise<string> {
-      const result = await executeCommand(`loot ${target} ${destination} ${source} ${args.join(' ')}`);
+    async loot(
+      target: "spawn" | "give" | "insert" | "replace",
+      destination: string,
+      source: string,
+      ...args: string[]
+    ): Promise<string> {
+      const result = await executeCommand(
+        `loot ${target} ${destination} ${source} ${args.join(" ")}`,
+      );
       const regex = /Dropped (\d+) stack\(s\)/;
       const match = result.match(regex);
       return match ? match[1] : result;
@@ -570,30 +760,53 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async particle(name: string, pos: [number, number, number], ...args: string[]): Promise<string> {
-      return await executeCommand(`particle ${name} ${pos.join(' ')} ${args.join(' ')}`);
+    async particle(
+      name: string,
+      pos: [number, number, number],
+      ...args: string[]
+    ): Promise<string> {
+      return await executeCommand(
+        `particle ${name} ${pos.join(" ")} ${args.join(" ")}`,
+      );
     },
 
-    async playSound(sound: string, source: string, target: string, ...args: string[]): Promise<string> {
-      return await executeCommand(`playsound ${sound} ${source} ${target} ${args.join(' ')}`);
+    async playSound(
+      sound: string,
+      source: string,
+      target: string,
+      ...args: string[]
+    ): Promise<string> {
+      return await executeCommand(
+        `playsound ${sound} ${source} ${target} ${args.join(" ")}`,
+      );
     },
 
-    async recipe(action: 'give' | 'take', target: string, recipe: string): Promise<string> {
-      const result = await executeCommand(`recipe ${action} ${target} ${recipe}`);
+    async recipe(
+      action: "give" | "take",
+      target: string,
+      recipe: string,
+    ): Promise<string> {
+      const result = await executeCommand(
+        `recipe ${action} ${target} ${recipe}`,
+      );
       const regex = /(\d+) recipe\(s\) (given|taken)/;
       const match = result.match(regex);
       return match ? `${match[1]} ${match[2]}` : result;
     },
 
     async reload(): Promise<string> {
-      return await executeCommand('reload');
+      return await executeCommand("reload");
     },
 
     async say(message: string): Promise<string> {
       return await executeCommand(`say ${message}`);
     },
 
-    async schedule(action: 'function' | 'clear', time: string, name: string): Promise<string> {
+    async schedule(
+      action: "function" | "clear",
+      time: string,
+      name: string,
+    ): Promise<string> {
       return await executeCommand(`schedule ${action} ${name} ${time}`);
     },
 
@@ -602,27 +815,51 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async spectate(target?: string, player?: string): Promise<string> {
-      const command = player ? `spectate ${target} ${player}` : target ? `spectate ${target}` : 'spectate';
+      const command = player
+        ? `spectate ${target} ${player}`
+        : target
+        ? `spectate ${target}`
+        : "spectate";
       return await executeCommand(command);
     },
 
-    async spreadPlayers(center: [number, number], distance: number, maxRange: number, respectTeams: boolean, targets: string): Promise<string> {
-      const result = await executeCommand(`spreadplayers ${center.join(' ')} ${distance} ${maxRange} ${respectTeams} ${targets}`);
+    async spreadPlayers(
+      center: [number, number],
+      distance: number,
+      maxRange: number,
+      respectTeams: boolean,
+      targets: string,
+    ): Promise<string> {
+      const result = await executeCommand(
+        `spreadplayers ${
+          center.join(" ")
+        } ${distance} ${maxRange} ${respectTeams} ${targets}`,
+      );
       const regex = /Spread (\d+) entities/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async stopSound(target: string, source?: string, sound?: string): Promise<string> {
+    async stopSound(
+      target: string,
+      source?: string,
+      sound?: string,
+    ): Promise<string> {
       let command = `stopsound ${target}`;
       if (source) command += ` ${source}`;
       if (sound) command += ` ${sound}`;
       return await executeCommand(command);
     },
 
-    async tag(target: string, action: 'add' | 'remove' | 'list', value?: string): Promise<string> {
-      const command = value ? `tag ${target} ${action} ${value}` : `tag ${target} ${action}`;
-      if (action === 'list') {
+    async tag(
+      target: string,
+      action: "add" | "remove" | "list",
+      value?: string,
+    ): Promise<string> {
+      const command = value
+        ? `tag ${target} ${action} ${value}`
+        : `tag ${target} ${action}`;
+      if (action === "list") {
         const result = await executeCommand(command);
         const regex = /(\d+) tag\(s\) on/;
         const match = result.match(regex);
@@ -631,8 +868,12 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return executeCommand(command);
     },
 
-    async team(action: 'add' | 'remove' | 'empty' | 'join' | 'leave' | 'modify', team: string, ...args: string[]): Promise<string> {
-      return await executeCommand(`team ${action} ${team} ${args.join(' ')}`);
+    async team(
+      action: "add" | "remove" | "empty" | "join" | "leave" | "modify",
+      team: string,
+      ...args: string[]
+    ): Promise<string> {
+      return await executeCommand(`team ${action} ${team} ${args.join(" ")}`);
     },
 
     async teamMsg(message: string): Promise<string> {
@@ -643,19 +884,34 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return await executeCommand(`tellraw ${target} ${message}`);
     },
 
-    async title(target: string, action: 'title' | 'subtitle' | 'actionbar' | 'clear' | 'reset', ...args: string[]): Promise<string> {
-      return await executeCommand(`title ${target} ${action} ${args.join(' ')}`);
+    async title(
+      target: string,
+      action: "title" | "subtitle" | "actionbar" | "clear" | "reset",
+      ...args: string[]
+    ): Promise<string> {
+      return await executeCommand(
+        `title ${target} ${action} ${args.join(" ")}`,
+      );
     },
 
-    async trigger(objective: string, action?: 'add' | 'set', value?: number): Promise<string> {
+    async trigger(
+      objective: string,
+      action?: "add" | "set",
+      value?: number,
+    ): Promise<string> {
       let command = `trigger ${objective}`;
       if (action && value !== undefined) command += ` ${action} ${value}`;
       return await executeCommand(command);
     },
 
-    async whitelist(action: 'on' | 'off' | 'list' | 'add' | 'remove' | 'reload', target?: string): Promise<string> {
-      const command = target ? `whitelist ${action} ${target}` : `whitelist ${action}`;
-      if (action === 'list') {
+    async whitelist(
+      action: "on" | "off" | "list" | "add" | "remove" | "reload",
+      target?: string,
+    ): Promise<string> {
+      const command = target
+        ? `whitelist ${action} ${target}`
+        : `whitelist ${action}`;
+      if (action === "list") {
         const result = await executeCommand(command);
         const regex = /There are (\d+) whitelisted players/;
         const match = result.match(regex);
@@ -672,14 +928,18 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async worldBorderDamage(damagePerBlock: number): Promise<string> {
-      const result = await executeCommand(`worldborder damage amount ${damagePerBlock}`);
+      const result = await executeCommand(
+        `worldborder damage amount ${damagePerBlock}`,
+      );
       const regex = /Set world border damage amount to ([\d.]+)/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
     async worldBorderWarningDistance(distance: number): Promise<string> {
-      const result = await executeCommand(`worldborder warning distance ${distance}`);
+      const result = await executeCommand(
+        `worldborder warning distance ${distance}`,
+      );
       const regex = /Set world border warning to (\d+) blocks/;
       const match = result.match(regex);
       return match ? match[1] : result;
@@ -693,7 +953,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async gameruleList(): Promise<Record<string, string>> {
-      const result = await executeCommand('gamerule');
+      const result = await executeCommand("gamerule");
       const rules: Record<string, string> = {};
       const regex = /(\w+) = (true|false|\d+)/g;
       let match;
@@ -703,7 +963,10 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return rules;
     },
 
-    async gameruleSet(rule: string, value: string | number | boolean): Promise<string> {
+    async gameruleSet(
+      rule: string,
+      value: string | number | boolean,
+    ): Promise<string> {
       const result = await executeCommand(`gamerule ${rule} ${value}`);
       const regex = /Gamerule (\w+) is now set to: (true|false|\d+)/;
       const match = result.match(regex);
@@ -731,14 +994,16 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? `${match[1]}: ${match[2]}` : result;
     },
 
-    async xpQuery(target: string, type: 'points' | 'levels'): Promise<number> {
+    async xpQuery(target: string, type: "points" | "levels"): Promise<number> {
       const result = await executeCommand(`xp query ${target} ${type}`);
       const regex = /(\w+) has (\d+) experience (points|levels)/;
       const match = result.match(regex);
       return match ? parseInt(match[2]) : 0;
     },
 
-    async timeSet(value: number | 'day' | 'night' | 'noon' | 'midnight'): Promise<string> {
+    async timeSet(
+      value: number | "day" | "night" | "noon" | "midnight",
+    ): Promise<string> {
       const result = await executeCommand(`time set ${value}`);
       const regex = /Set the time to (\d+)/;
       const match = result.match(regex);
@@ -752,7 +1017,7 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async timeQuery(type: 'daytime' | 'gametime' | 'day'): Promise<number> {
+    async timeQuery(type: "daytime" | "gametime" | "day"): Promise<number> {
       const result = await executeCommand(`time query ${type}`);
       const regex = /The time is (\d+)/;
       const match = result.match(regex);
@@ -760,30 +1025,34 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async weatherClear(duration?: number): Promise<string> {
-      const command = duration ? `weather clear ${duration}` : 'weather clear';
+      const command = duration ? `weather clear ${duration}` : "weather clear";
       const result = await executeCommand(command);
       const regex = /Changing to clear weather(?: for (\d+) seconds)?/;
       const match = result.match(regex);
-      return match ? (match[1] || 'Clear') : result;
+      return match ? (match[1] || "Clear") : result;
     },
 
     async weatherRain(duration?: number): Promise<string> {
-      const command = duration ? `weather rain ${duration}` : 'weather rain';
+      const command = duration ? `weather rain ${duration}` : "weather rain";
       const result = await executeCommand(command);
       const regex = /Changing to rainy weather(?: for (\d+) seconds)?/;
       const match = result.match(regex);
-      return match ? (match[1] || 'Rain') : result;
+      return match ? (match[1] || "Rain") : result;
     },
 
     async weatherThunder(duration?: number): Promise<string> {
-      const command = duration ? `weather thunder ${duration}` : 'weather thunder';
+      const command = duration
+        ? `weather thunder ${duration}`
+        : "weather thunder";
       const result = await executeCommand(command);
       const regex = /Changing to thunder(?: for (\d+) seconds)?/;
       const match = result.match(regex);
-      return match ? (match[1] || 'Thunder') : result;
+      return match ? (match[1] || "Thunder") : result;
     },
 
-    async difficultySet(level: 'peaceful' | 'easy' | 'normal' | 'hard'): Promise<string> {
+    async difficultySet(
+      level: "peaceful" | "easy" | "normal" | "hard",
+    ): Promise<string> {
       const result = await executeCommand(`difficulty ${level}`);
       const regex = /Set game difficulty to (\w+)/;
       const match = result.match(regex);
@@ -791,28 +1060,40 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async difficultyGet(): Promise<string> {
-      const result = await executeCommand('difficulty');
+      const result = await executeCommand("difficulty");
       const regex = /The difficulty is (\w+)/;
       const match = result.match(regex);
       return match ? match[1] : result;
     },
 
-    async advancementGrant(target: string, advancement: string | 'everything'): Promise<string> {
-      const result = await executeCommand(`advancement grant ${target} ${advancement}`);
+    async advancementGrant(
+      target: string,
+      advancement: string | "everything",
+    ): Promise<string> {
+      const result = await executeCommand(
+        `advancement grant ${target} ${advancement}`,
+      );
       const regex = /Granted (\d+) advancements? to (\w+)/;
       const match = result.match(regex);
       return match ? `${match[2]}: ${match[1]}` : result;
     },
 
-    async advancementRevoke(target: string, advancement: string | 'everything'): Promise<string> {
-      const result = await executeCommand(`advancement revoke ${target} ${advancement}`);
+    async advancementRevoke(
+      target: string,
+      advancement: string | "everything",
+    ): Promise<string> {
+      const result = await executeCommand(
+        `advancement revoke ${target} ${advancement}`,
+      );
       const regex = /Revoked (\d+) advancements? from (\w+)/;
       const match = result.match(regex);
       return match ? `${match[2]}: -${match[1]}` : result;
     },
 
     async bossbarAdd(id: string, name: string): Promise<string> {
-      const result = await executeCommand(`bossbar add ${id} ${JSON.stringify(name)}`);
+      const result = await executeCommand(
+        `bossbar add ${id} ${JSON.stringify(name)}`,
+      );
       const regex = /Created custom bossbar (.+)/;
       const match = result.match(regex);
       return match ? match[1] : result;
@@ -826,21 +1107,25 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     },
 
     async bossbarList(): Promise<string[]> {
-      const result = await executeCommand('bossbar list');
+      const result = await executeCommand("bossbar list");
       const regex = /- (.+)/g;
       const matches = result.match(regex);
-      return matches ? matches.map(m => m.slice(2)) : [];
+      return matches ? matches.map((m) => m.slice(2)) : [];
     },
 
-    async datapackList(): Promise<{ available: string[], enabled: string[] }> {
-      const result = await executeCommand('datapack list');
+    async datapackList(): Promise<{ available: string[]; enabled: string[] }> {
+      const result = await executeCommand("datapack list");
       const availableRegex = /Available:(?:\s*\n\s*- (.+))+/;
       const enabledRegex = /Enabled:(?:\s*\n\s*- (.+))+/;
       const availableMatch = result.match(availableRegex);
       const enabledMatch = result.match(enabledRegex);
       return {
-        available: availableMatch ? availableMatch[0].split('\n').slice(1).map(s => s.trim().slice(2)) : [],
-        enabled: enabledMatch ? enabledMatch[0].split('\n').slice(1).map(s => s.trim().slice(2)) : []
+        available: availableMatch
+          ? availableMatch[0].split("\n").slice(1).map((s) => s.trim().slice(2))
+          : [],
+        enabled: enabledMatch
+          ? enabledMatch[0].split("\n").slice(1).map((s) => s.trim().slice(2))
+          : [],
       };
     },
 
@@ -858,19 +1143,30 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return match ? match[1] : result;
     },
 
-    async effectGive(target: string, effect: string, duration?: number, amplifier?: number, hideParticles?: boolean): Promise<string> {
+    async effectGive(
+      target: string,
+      effect: string,
+      duration?: number,
+      amplifier?: number,
+      hideParticles?: boolean,
+    ): Promise<string> {
       let command = `effect give ${target} ${effect}`;
       if (duration !== undefined) command += ` ${duration}`;
       if (amplifier !== undefined) command += ` ${amplifier}`;
       if (hideParticles !== undefined) command += ` ${hideParticles}`;
       const result = await executeCommand(command);
-      const regex = /Given (.+) \(ID (\d+)\) \* (\d+) to (\w+) for (\d+) seconds/;
+      const regex =
+        /Given (.+) \(ID (\d+)\) \* (\d+) to (\w+) for (\d+) seconds/;
       const match = result.match(regex);
-      return match ? `${match[4]}: ${match[1]} (${match[2]}) x${match[3]} for ${match[5]}s` : result;
+      return match
+        ? `${match[4]}: ${match[1]} (${match[2]}) x${match[3]} for ${match[5]}s`
+        : result;
     },
 
     async effectClear(target: string, effect?: string): Promise<string> {
-      const command = effect ? `effect clear ${target} ${effect}` : `effect clear ${target}`;
+      const command = effect
+        ? `effect clear ${target} ${effect}`
+        : `effect clear ${target}`;
       const result = await executeCommand(command);
       const regex = /Removed (\d+) effect(?:s)? from (\w+)/;
       const match = result.match(regex);
@@ -880,18 +1176,20 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
     async getPlayerData(player: string): Promise<Record<string, string>> {
       const result = await executeCommand(`data get entity ${player}`);
       try {
-        const dataString = result.slice(result.indexOf('{'));
+        const dataString = result.slice(result.indexOf("{"));
         return JSON.parse(dataString.replace(/(\w+):/g, '"$1":'));
       } catch (error: unknown) {
-        throw new Error('Failed to parse player data: ' + error);
+        throw new Error("Failed to parse player data: " + error);
       }
     },
 
-    async getPlayerRotation(player: string): Promise<{ yaw: number, pitch: number }> {
+    async getPlayerRotation(
+      player: string,
+    ): Promise<{ yaw: number; pitch: number }> {
       const data = await this.getPlayerData(player);
       return {
         yaw: data.Rotation[0],
-        pitch: data.Rotation[1]
+        pitch: data.Rotation[1],
       };
     },
 
@@ -900,20 +1198,24 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return data.Health;
     },
 
-    async getPlayerFood(player: string): Promise<{ level: number, saturation: number }> {
+    async getPlayerFood(
+      player: string,
+    ): Promise<{ level: number; saturation: number }> {
       const data = await this.getPlayerData(player);
       return {
         level: data.foodLevel,
-        saturation: data.foodSaturationLevel
+        saturation: data.foodSaturationLevel,
       };
     },
 
-    async getPlayerXP(player: string): Promise<{ level: number, points: number, total: number }> {
+    async getPlayerXP(
+      player: string,
+    ): Promise<{ level: number; points: number; total: number }> {
       const data = await this.getPlayerData(player);
       return {
         level: data.XpLevel,
         points: Math.floor(data.XpP * data.XpLevel),
-        total: data.XpTotal
+        total: data.XpTotal,
       };
     },
 
@@ -922,31 +1224,39 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return data.playerGameType;
     },
 
-    async getPlayerInventory(player: string): Promise<Array<{ slot: number, id: string, count: number }>> {
+    async getPlayerInventory(
+      player: string,
+    ): Promise<Array<{ slot: number; id: string; count: number }>> {
       const data = await this.getPlayerData(player);
-      return data.Inventory.map((item: { Slot: number; id: string; Count: number }) => ({
+      return data.Inventory.map((
+        item: { Slot: number; id: string; Count: number },
+      ) => ({
         slot: item.Slot,
         id: item.id,
-        count: item.Count
+        count: item.Count,
       }));
     },
 
-    async getPlayerSelectedItem(player: string): Promise<{ id: string, count: number } | null> {
+    async getPlayerSelectedItem(
+      player: string,
+    ): Promise<{ id: string; count: number } | null> {
       const data = await this.getPlayerData(player);
       if (data.SelectedItem) {
         return {
           id: data.SelectedItem.id,
-          count: data.SelectedItem.Count
+          count: data.SelectedItem.Count,
         };
       }
       return null;
     },
 
-    async getPlayerAttributes(player: string): Promise<Array<{ name: string, base: number }>> {
+    async getPlayerAttributes(
+      player: string,
+    ): Promise<Array<{ name: string; base: number }>> {
       const data = await this.getPlayerData(player);
       return data.Attributes.map((attr: { Name: string; Base: number }) => ({
         name: attr.Name,
-        base: attr.Base
+        base: attr.Base,
       }));
     },
 
@@ -955,17 +1265,19 @@ export function createMinecraftAPI(sendToMinecraft: SendToMinecraft, log: LogFun
       return data.recipeBook.recipes;
     },
 
-    async getPlayerLastDeathLocation(player: string): Promise<{ x: number, y: number, z: number, dimension: string } | null> {
+    async getPlayerLastDeathLocation(
+      player: string,
+    ): Promise<{ x: number; y: number; z: number; dimension: string } | null> {
       const data = await this.getPlayerData(player);
       if (data.LastDeathLocation) {
         return {
           x: data.LastDeathLocation.pos[0],
           y: data.LastDeathLocation.pos[1],
           z: data.LastDeathLocation.pos[2],
-          dimension: data.LastDeathLocation.dimension
+          dimension: data.LastDeathLocation.dimension,
         };
       }
       return null;
-    }
+    },
   };
 }

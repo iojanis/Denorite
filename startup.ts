@@ -1,4 +1,4 @@
-import { exists } from 'https://deno.land/std/fs/mod.ts';
+import { exists } from "https://deno.land/std/fs/mod.ts";
 
 async function initializeModules() {
   const modulesDir = "/app/modules";
@@ -18,7 +18,9 @@ async function initializeModules() {
       const { success: rmSuccess, code: rmCode } = await rmProcess.output();
 
       if (!rmSuccess) {
-        console.error(`Failed to clean modules directory. Exit code: ${rmCode}`);
+        console.error(
+          `Failed to clean modules directory. Exit code: ${rmCode}`,
+        );
         Deno.exit(1);
       }
     }
@@ -38,7 +40,6 @@ async function initializeModules() {
     }
 
     console.log("Successfully initialized modules directory.");
-
   } catch (error) {
     console.error("Error during module initialization:", error);
     Deno.exit(1);

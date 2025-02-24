@@ -1,7 +1,12 @@
 // deno-lint-ignore-file
 // core/authService.ts
 
-import { create, verify, getNumericDate, Header } from "https://deno.land/x/djwt@v2.8/mod.ts";
+import {
+  create,
+  getNumericDate,
+  Header,
+  verify,
+} from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { ConfigManager } from "./ConfigManager.ts";
 import { KvManager } from "./kvManager.ts";
 import { Logger } from "./logger.ts";
@@ -18,7 +23,7 @@ export class AuthService {
     kv: KvManager,
     logger: Logger,
     jwtSecret: CryptoKey,
-    denoriteSecret: CryptoKey
+    denoriteSecret: CryptoKey,
   ) {
     this.config = config;
     this.kv = kv;
@@ -27,7 +32,10 @@ export class AuthService {
     this.denoriteSecret = denoriteSecret;
   }
 
-  async createToken(payload: { [key: string]: any }, expiresIn: number = 360 * 24 * 60 * 60): Promise<string> {
+  async createToken(
+    payload: { [key: string]: any },
+    expiresIn: number = 360 * 24 * 60 * 60,
+  ): Promise<string> {
     const header: Header = { alg: "HS256", typ: "JWT" };
     const nowInSeconds = Math.floor(Date.now() / 1000);
     const expirationTime = nowInSeconds + expiresIn;
@@ -53,20 +61,26 @@ export class AuthService {
       if (error instanceof Error) {
         this.logger.error(`Token verification failed: ${error.message}`);
       } else {
-        this.logger.error('Token verification failed: Unknown error');
+        this.logger.error("Token verification failed: Unknown error");
       }
       return null;
     }
   }
 
-  async createDenoriteToken(expiresIn: number = 360 * 24 * 60 * 60): Promise<string> {
+  async createDenoriteToken(
+    expiresIn: number = 360 * 24 * 60 * 60,
+  ): Promise<string> {
     const payload = {
       iss: "denorite-server",
       exp: getNumericDate(expiresIn),
     };
 
     try {
-      return await create({ alg: "HS256", typ: "JWT" }, payload, this.denoriteSecret);
+      return await create(
+        { alg: "HS256", typ: "JWT" },
+        payload,
+        this.denoriteSecret,
+      );
     } catch (error: any) {
       this.logger.error(`Denorite token creation failed: ${error.message}`);
       throw error;
@@ -77,8 +91,12 @@ export class AuthService {
     return await verify(token, this.denoriteSecret);
   }
 
-  async checkPermission(token: string | null, requiredLevel: 'guest' | 'player' | 'operator', operatorLevel?: number): Promise<boolean> {
-    if (!token && requiredLevel === 'guest') {
+  async checkPermission(
+    token: string | null,
+    requiredLevel: "guest" | "player" | "operator",
+    operatorLevel?: number,
+  ): Promise<boolean> {
+    if (!token && requiredLevel === "guest") {
       return true;
     }
 
@@ -93,12 +111,12 @@ export class AuthService {
       }
 
       switch (requiredLevel) {
-        case 'guest':
+        case "guest":
           return true;
-        case 'player':
-          return payload.role === 'player' || payload.role === 'operator';
-        case 'operator':
-          if (payload.role !== 'operator') {
+        case "player":
+          return payload.role === "player" || payload.role === "operator";
+        case "operator":
+          if (payload.role !== "operator") {
             return false;
           }
           if (operatorLevel && payload.operatorLevel < operatorLevel) {

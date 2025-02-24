@@ -17,30 +17,33 @@ interface FileSystemResponse {
 }
 
 export type ServerDirectory =
-  | 'world'          // Main world folder (from server.properties level-name)
-  | 'world_nether'   // Nether dimension
-  | 'world_the_end'  // End dimension
-  | 'mods'          // Fabric/Forge mods
-  | 'config'        // Mod configurations
-  | 'logs'          // Server logs
-  | 'crash-reports'; // Crash reports
+  | "world" // Main world folder (from server.properties level-name)
+  | "world_nether" // Nether dimension
+  | "world_the_end" // End dimension
+  | "mods" // Fabric/Forge mods
+  | "config" // Mod configurations
+  | "logs" // Server logs
+  | "crash-reports"; // Crash reports
 
 export function createFilesAPI(
   sendToMinecraft: (data: unknown) => Promise<unknown>,
-  log: (message: string) => void
+  log: (message: string) => void,
 ) {
   const gameDir: string | null = null;
 
-  async function sendCommand(subcommand: string, args: Record<string, string>): Promise<unknown> {
+  async function sendCommand(
+    subcommand: string,
+    args: Record<string, string>,
+  ): Promise<unknown> {
     return await sendToMinecraft({
-      type: 'files',
+      type: "files",
       subcommand,
-      arguments: args
+      arguments: args,
     });
   }
 
   function isDownloadAllowed(directory: ServerDirectory): boolean {
-    return ['mods', 'config'].includes(directory);
+    return ["mods", "config"].includes(directory);
   }
 
   return {
@@ -48,9 +51,12 @@ export function createFilesAPI(
      * Gets the server's base directory
      */
     async getGameDirectory(): Promise<string> {
-      const response = await sendCommand('getGameDir', {}) as FileSystemResponse;
+      const response = await sendCommand(
+        "getGameDir",
+        {},
+      ) as FileSystemResponse;
       if (!response.success || !response.gameDir) {
-        throw new Error(response.error || 'Failed to get game directory');
+        throw new Error(response.error || "Failed to get game directory");
       }
       return response.gameDir;
     },
@@ -60,13 +66,20 @@ export function createFilesAPI(
      * @param directory The server directory to list
      * @param subPath Optional subdirectory path
      */
-    async listFiles(directory: ServerDirectory, subPath: string = ''): Promise<FileInfo[]> {
+    async listFiles(
+      directory: ServerDirectory,
+      subPath: string = "",
+    ): Promise<FileInfo[]> {
       const basePath = await this.getGameDirectory();
-      const fullPath = subPath ? `${basePath}/${directory}/${subPath}` : `${basePath}/${directory}`;
+      const fullPath = subPath
+        ? `${basePath}/${directory}/${subPath}`
+        : `${basePath}/${directory}`;
 
-      const response = await sendCommand('list', { path: fullPath }) as FileSystemResponse;
+      const response = await sendCommand("list", {
+        path: fullPath,
+      }) as FileSystemResponse;
       if (!response.success || !response.files) {
-        throw new Error(response.error || 'Failed to list files');
+        throw new Error(response.error || "Failed to list files");
       }
       return response.files;
     },
@@ -78,21 +91,27 @@ export function createFilesAPI(
      * @param directory Target server directory
      * @param targetPath Path within the directory
      */
-    async downloadFile(url: string, directory: ServerDirectory, targetPath: string): Promise<string> {
+    async downloadFile(
+      url: string,
+      directory: ServerDirectory,
+      targetPath: string,
+    ): Promise<string> {
       if (!isDownloadAllowed(directory)) {
-        throw new Error(`Downloads are not allowed in the ${directory} directory`);
+        throw new Error(
+          `Downloads are not allowed in the ${directory} directory`,
+        );
       }
 
       const basePath = await this.getGameDirectory();
       const fullPath = `${basePath}/${directory}/${targetPath}`;
 
-      const response = await sendCommand('download', {
+      const response = await sendCommand("download", {
         url,
-        targetPath: fullPath
+        targetPath: fullPath,
       }) as FileSystemResponse;
 
       if (!response.success || !response.path) {
-        throw new Error(response.error || 'Failed to download file');
+        throw new Error(response.error || "Failed to download file");
       }
       return response.path;
     },
@@ -102,13 +121,18 @@ export function createFilesAPI(
      * @param directory Server directory containing the file
      * @param path Path within the directory
      */
-    async deleteFile(directory: ServerDirectory, path: string): Promise<string> {
+    async deleteFile(
+      directory: ServerDirectory,
+      path: string,
+    ): Promise<string> {
       const basePath = await this.getGameDirectory();
       const fullPath = `${basePath}/${directory}/${path}`;
 
-      const response = await sendCommand('delete', { path: fullPath }) as FileSystemResponse;
+      const response = await sendCommand("delete", {
+        path: fullPath,
+      }) as FileSystemResponse;
       if (!response.success || !response.path) {
-        throw new Error(response.error || 'Failed to delete file');
+        throw new Error(response.error || "Failed to delete file");
       }
       return response.path;
     },
@@ -124,25 +148,25 @@ export function createFilesAPI(
       sourceDir: ServerDirectory,
       sourcePath: string,
       destDir: ServerDirectory,
-      destPath: string
+      destPath: string,
     ): Promise<{ source: string; destination: string }> {
       const basePath = await this.getGameDirectory();
       const fullSourcePath = `${basePath}/${sourceDir}/${sourcePath}`;
       const fullDestPath = `${basePath}/${destDir}/${destPath}`;
 
-      const response = await sendCommand('move', {
+      const response = await sendCommand("move", {
         source: fullSourcePath,
-        destination: fullDestPath
+        destination: fullDestPath,
       }) as FileSystemResponse;
 
       if (!response.success || !response.source || !response.destination) {
-        throw new Error(response.error || 'Failed to move file');
+        throw new Error(response.error || "Failed to move file");
       }
       return {
         source: response.source,
-        destination: response.destination
+        destination: response.destination,
       };
-    }
+    },
   };
 }
 

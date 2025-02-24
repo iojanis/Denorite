@@ -4,13 +4,15 @@
     "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx",
     "cli": "echo \"import '\\$fresh/src/dev/cli.ts'\" | deno run --unstable -A -",
     "manifest": "deno task cli manifest $(pwd)",
+    "combine": "deno run -A --unstable-kv combine_modules.ts",
     "start": "deno run -A --unstable-kv main.ts",
     "build": "deno run -A --unstable-kv --unstable-broadcast-channel main.ts build",
     "compile": "deno compile -A --unstable-kv --unstable-broadcast-channel main.ts build",
     "dev": "deno run -A --unstable-kv --watch=core/,api/ main.ts"
   },
   "imports": {
-    "$std/": "https://deno.land/std@0.216.0/"
+    "$std/": "https://deno.land/std@0.216.0/",
+    "ts-morph": "jsr:@ts-morph/ts-morph@^25.0.0"
   },
   "nodeModulesDir": "auto"
 }

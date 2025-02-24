@@ -4,27 +4,34 @@
 import { PlayerManager } from "./core/PlayerManager.ts";
 import type { RateLimiter } from "./core/RateLimiter.ts";
 
-export function Online(location: 'game' | 'web' | 'both' = 'both') {
+export function Online(location: "game" | "web" | "both" = "both") {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `online:${context.name.toString()}`, location);
+    setMetadata(
+      context.metadata,
+      `online:${context.name.toString()}`,
+      location,
+    );
     return async function (this: any, ...args: unknown[]) {
       const [scriptContext] = args;
-      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+      const { params, playerManager } = scriptContext as {
+        params: any;
+        playerManager: PlayerManager;
+      };
       const sender = params.sender || params.playerName;
 
       if (!sender) {
-        throw new Error('No sender specified for online-required action');
+        throw new Error("No sender specified for online-required action");
       }
 
       const isOnline = playerManager.isOnline(sender);
       if (!isOnline) {
-        throw new Error('Player must be online to perform this action');
+        throw new Error("Player must be online to perform this action");
       }
 
       // Add location-specific checks if needed
       const player = playerManager.getPlayer(sender);
-      if (location === 'game' && !player?.location) {
-        throw new Error('This action requires the player to be in-game');
+      if (location === "game" && !player?.location) {
+        throw new Error("This action requires the player to be in-game");
       }
 
       return originalMethod.apply(this, args);
@@ -34,17 +41,27 @@ export function Online(location: 'game' | 'web' | 'both' = 'both') {
 
 export function Permission(permission: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `permission:${context.name.toString()}`, permission);
+    setMetadata(
+      context.metadata,
+      `permission:${context.name.toString()}`,
+      permission,
+    );
     return async function (this: any, ...args: unknown[]) {
       const [scriptContext] = args;
-      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+      const { params, playerManager } = scriptContext as {
+        params: any;
+        playerManager: PlayerManager;
+      };
       const sender = params.sender || params.playerName;
 
-      if (!sender && (permission !== 'guest')) {
-        throw new Error('No sender specified for permission check');
+      if (!sender && (permission !== "guest")) {
+        throw new Error("No sender specified for permission check");
       }
 
-      if (!playerManager.hasPermission(sender, permission) && (permission !== 'guest')) {
+      if (
+        !playerManager.hasPermission(sender, permission) &&
+        (permission !== "guest")
+      ) {
         throw new Error(`Insufficient permissions. Required: ${permission}`);
       }
 
@@ -56,17 +73,30 @@ export function Permission(permission: string) {
 // Update the existing Command decorator to handle permissions
 export function Command(commandPath: string[]) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `command:${context.name.toString()}`, { path: commandPath });
+    setMetadata(context.metadata, `command:${context.name.toString()}`, {
+      path: commandPath,
+    });
     return async function (this: any, ...args: unknown[]) {
       const [scriptContext] = args;
-      const { params, playerManager } = scriptContext as { params: any, playerManager: PlayerManager };
+      const { params, playerManager } = scriptContext as {
+        params: any;
+        playerManager: PlayerManager;
+      };
 
       // Get the permission requirement from metadata
-      const permissionMetadata = getMetadata(context.metadata, `permission:${context.name.toString()}`);
+      const permissionMetadata = getMetadata(
+        context.metadata,
+        `permission:${context.name.toString()}`,
+      );
       if (permissionMetadata) {
         const sender = params.sender;
-        if (!playerManager.hasPermission(sender, permissionMetadata) && (permissionMetadata !== 'guest')) {
-          throw new Error(`Insufficient permissions. Required: ${permissionMetadata}`);
+        if (
+          !playerManager.hasPermission(sender, permissionMetadata) &&
+          (permissionMetadata !== "guest")
+        ) {
+          throw new Error(
+            `Insufficient permissions. Required: ${permissionMetadata}`,
+          );
         }
       }
 
@@ -88,13 +118,15 @@ export function getMetadata(target: any, key: string): any {
 
 export function Module(config: { name: string; version: string }) {
   return function (target: Function) {
-    setMetadata(target, 'module', config);
+    setMetadata(target, "module", config);
   };
 }
 
 export function Event(eventName: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `event:${context.name.toString()}`, { name: eventName });
+    setMetadata(context.metadata, `event:${context.name.toString()}`, {
+      name: eventName,
+    });
     return function (this: any, ...args: unknown[]) {
       // Here you can add any pre-processing logic
       const result = originalMethod.apply(this, args);
@@ -104,9 +136,15 @@ export function Event(eventName: string) {
   };
 }
 
-export function Argument(configs: { name: string; type: string; description: string }[]) {
+export function Argument(
+  configs: { name: string; type: string; description: string }[],
+) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `arguments:${context.name.toString()}`, configs);
+    setMetadata(
+      context.metadata,
+      `arguments:${context.name.toString()}`,
+      configs,
+    );
     return function (this: any, ...args: unknown[]) {
       // Here you can add argument-specific logic if needed
       return originalMethod.apply(this, args);
@@ -117,7 +155,9 @@ export function Argument(configs: { name: string; type: string; description: str
 export function Socket(socketName?: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     const name = socketName || context.name.toString();
-    setMetadata(context.metadata, `socket:${context.name.toString()}`, { name });
+    setMetadata(context.metadata, `socket:${context.name.toString()}`, {
+      name,
+    });
     return function (this: any, ...args: unknown[]) {
       // Here you can add socket-specific logic
       return originalMethod.apply(this, args);
@@ -127,7 +167,11 @@ export function Socket(socketName?: string) {
 
 export function Description(description: string) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
-    setMetadata(context.metadata, `description:${context.name.toString()}`, description);
+    setMetadata(
+      context.metadata,
+      `description:${context.name.toString()}`,
+      description,
+    );
     return function (this: any, ...args: unknown[]) {
       // Here you can add description-specific logic if needed
       return originalMethod.apply(this, args);
@@ -143,7 +187,7 @@ export function Cron(cronExpression: string, options?: CronOptions) {
   return function (originalMethod: any, context: ClassMethodDecoratorContext) {
     setMetadata(context.metadata, `cron:${context.name.toString()}`, {
       expression: cronExpression,
-      options
+      options,
     });
 
     return async function (this: any, ...args: unknown[]) {
@@ -163,26 +207,26 @@ export function Limit(limit: string) {
       const sender = params.sender || params.playerName;
 
       if (!sender) {
-        throw new Error('No sender specified for rate limit check');
+        throw new Error("No sender specified for rate limit check");
       }
 
       // Parse the limit string (e.g., "10/minute", "100/hour")
-      const [count, interval] = limit.split('/');
+      const [count, interval] = limit.split("/");
       const maxRequests = parseInt(count);
 
       // Convert interval to milliseconds
       let windowMs: number;
       switch (interval.toLowerCase()) {
-        case 'second':
+        case "second":
           windowMs = 1000;
           break;
-        case 'minute':
+        case "minute":
           windowMs = 60 * 1000;
           break;
-        case 'hour':
+        case "hour":
           windowMs = 60 * 60 * 1000;
           break;
-        case 'day':
+        case "day":
           windowMs = 24 * 60 * 60 * 1000;
           break;
         default:
@@ -192,7 +236,7 @@ export function Limit(limit: string) {
       // Create rate limit config
       const config = {
         windowMs,
-        maxRequests
+        maxRequests,
       };
 
       // Get method name for rate limiting
@@ -203,11 +247,11 @@ export function Limit(limit: string) {
       const result = await rateLimiter.handleSocketRateLimit(
         sender,
         `${this.constructor.name}:${methodName}`,
-        'player' // Default to player role, can be enhanced to be more dynamic
+        "player", // Default to player role, can be enhanced to be more dynamic
       );
 
       if (!result.allowed) {
-        throw new Error(result.error || 'Rate limit exceeded');
+        throw new Error(result.error || "Rate limit exceeded");
       }
 
       // Execute the original method if rate limit check passes
@@ -217,9 +261,9 @@ export function Limit(limit: string) {
 }
 
 export interface WatchConfig {
-  keys: string[][];      // Array of kv key paths to watch
-  debounce?: number;     // Optional debounce time in ms
-  initial?: boolean;     // Whether to trigger on initial load
+  keys: string[][]; // Array of kv key paths to watch
+  debounce?: number; // Optional debounce time in ms
+  initial?: boolean; // Whether to trigger on initial load
 }
 
 export function Watch(config: WatchConfig) {
@@ -230,16 +274,16 @@ export function Watch(config: WatchConfig) {
       {
         keys: config.keys,
         debounce: config.debounce || 0,
-        initial: config.initial || false
-      }
+        initial: config.initial || false,
+      },
     );
     return originalMethod;
   };
 }
 
 // Helper functions
-const metadataSymbol = Symbol('metadata');
-const symbolMetadataKey = Symbol.for('Symbol.metadata');
+const metadataSymbol = Symbol("metadata");
+const symbolMetadataKey = Symbol.for("Symbol.metadata");
 
 export function listMetadata(target: any): { [key: string]: any } {
   const result: { [key: string]: any } = {};
@@ -260,9 +304,9 @@ export function listMetadata(target: any): { [key: string]: any } {
 
   // Get metadata from Symbol(Symbol.metadata)
   for (const key of Object.getOwnPropertySymbols(target)) {
-    if (key.description === 'Symbol.metadata') {
+    if (key.description === "Symbol.metadata") {
       const symbolMetadata = target[key];
-      if (symbolMetadata && typeof symbolMetadata === 'object') {
+      if (symbolMetadata && typeof symbolMetadata === "object") {
         const nestedMetadata = symbolMetadata[metadataSymbol];
         if (nestedMetadata instanceof Map) {
           Object.assign(result, getMapValues(nestedMetadata));

@@ -11,10 +11,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
+          cpus: "0.50"
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 256M
 
   server:
@@ -31,23 +31,23 @@ services:
       - DENORITE_SERVER_SECRET=${DENORITE_SERVER_SECRET}
       - DENORITE_JWT_SECRET=${DENORITE_JWT_SECRET}
       - RCON_HOST=mc
-      - CLAUDE_API_KEY=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
-      - JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZW5vcml0ZS1zZXJ2ZXIiLCJleHAiOjE3NjE5MzcxOTF9.HrsbtPk6_Jn_cwVPq7NX9AHJjRn5ofkNn_BNnoYmGSk
-      - SERVER_URL=wss://denorite.cou.ai/minecraft
-      - MC_SERVER_URL=https://cou.ai
-      - STRICT_MODE=true
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - JWT_TOKEN=${JWT_TOKEN}
+      - SERVER_URL=${SERVER_URL}
+      - MC_SERVER_URL=${MC_SERVER_URL}
+      - STRICT_MODE=${STRICT_MODE}
     volumes:
       - modules-data:/app/modules
-      - './minecraft-data:/app/minecraft-data'
+      - "./minecraft-data:/app/minecraft-data"
     depends_on:
       - kv
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 2G
         reservations:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
 
   mc:
@@ -55,46 +55,46 @@ services:
     image: itzg/minecraft-server
     restart: always
     ports:
-      - '${PORT}:25565'
-      - '24454:24454/udp'
+      - "${PORT}:25565"
+      - "24454:24454/udp"
     environment:
       - EULA=true
       - MODRINTH_PROJECTS=bluemap,fabric-api
-      - 'VERSION=${MINECRAFT_VERSION:-latest}'
-      - 'TYPE=${MINECRAFT_TYPE:-FABRIC}'
-      - 'SERVER_NAME=${MINECRAFT_SERVER_NAME:-Minecraft Server}'
-      - 'MOTD=${MINECRAFT_MOTD:-Minecraft Server powered by §aCou.sh§r}'
-      - 'DIFFICULTY=${MINECRAFT_DIFFICULTY:-normal}'
-      - 'MAX_PLAYERS=${MINECRAFT_MAX_PLAYERS:-10}'
-      - 'MAX_WORLD_SIZE=${MINECRAFT_MAX_WORLD_SIZE:-10000}'
-      - 'VIEW_DISTANCE=${MINECRAFT_VIEW_DISTANCE:-10}'
-      - 'MAX_BUILD_HEIGHT=${MINECRAFT_MAX_BUILD_HEIGHT:-256}'
-      - 'MAX_TICK_TIME=${MINECRAFT_MAX_TICK_TIME:-60000}'
-      - 'ALLOW_NETHER=${MINECRAFT_ALLOW_NETHER:-true}'
-      - 'ANNOUNCE_PLAYER_ACHIEVEMENTS=${MINECRAFT_ANNOUNCE_PLAYER_ACHIEVEMENTS:-true}'
-      - 'GENERATE_STRUCTURES=${MINECRAFT_GENERATE_STRUCTURES:-true}'
-      - 'PVP=${MINECRAFT_PVP:-true}'
-      - 'FORCE_GAMEMODE=${MINECRAFT_FORCE_GAMEMODE:-false}'
-      - 'HARDCORE=${MINECRAFT_HARDCORE:-false}'
-      - 'ENABLE_COMMAND_BLOCK=${MINECRAFT_ENABLE_COMMAND_BLOCK:-false}'
-      - 'SPAWN_ANIMALS=${MINECRAFT_SPAWN_ANIMALS:-true}'
-      - 'SPAWN_MONSTERS=${MINECRAFT_SPAWN_MONSTERS:-true}'
-      - 'SPAWN_NPCS=${MINECRAFT_SPAWN_NPCS:-true}'
-      - 'SNOOPER_ENABLED=${MINECRAFT_SNOOPER_ENABLED:-true}'
-      - 'ONLINE_MODE=${MINECRAFT_ONLINE_MODE:-true}'
-      - 'PLAYER_IDLE_TIMEOUT=${MINECRAFT_PLAYER_IDLE_TIMEOUT:-0}'
-      - 'MEMORY=${MINECRAFT_MEMORY:-1G}'
-      - 'ENABLE_AUTOPAUSE=${MINECRAFT_ENABLE_AUTOPAUSE:-false}'
-      - 'RCON_PASSWORD=${SERVICE_PASSWORD_RCON}'
-      - 'PORT=${PORT:-25565}'
+      - "VERSION=${MINECRAFT_VERSION:-latest}"
+      - "TYPE=${MINECRAFT_TYPE:-FABRIC}"
+      - "SERVER_NAME=${MINECRAFT_SERVER_NAME:-Minecraft Server}"
+      - "MOTD=${MINECRAFT_MOTD:-Minecraft Server powered by §aCou.sh§r}"
+      - "DIFFICULTY=${MINECRAFT_DIFFICULTY:-normal}"
+      - "MAX_PLAYERS=${MINECRAFT_MAX_PLAYERS:-10}"
+      - "MAX_WORLD_SIZE=${MINECRAFT_MAX_WORLD_SIZE:-10000}"
+      - "VIEW_DISTANCE=${MINECRAFT_VIEW_DISTANCE:-10}"
+      - "MAX_BUILD_HEIGHT=${MINECRAFT_MAX_BUILD_HEIGHT:-256}"
+      - "MAX_TICK_TIME=${MINECRAFT_MAX_TICK_TIME:-60000}"
+      - "ALLOW_NETHER=${MINECRAFT_ALLOW_NETHER:-true}"
+      - "ANNOUNCE_PLAYER_ACHIEVEMENTS=${MINECRAFT_ANNOUNCE_PLAYER_ACHIEVEMENTS:-true}"
+      - "GENERATE_STRUCTURES=${MINECRAFT_GENERATE_STRUCTURES:-true}"
+      - "PVP=${MINECRAFT_PVP:-true}"
+      - "FORCE_GAMEMODE=${MINECRAFT_FORCE_GAMEMODE:-false}"
+      - "HARDCORE=${MINECRAFT_HARDCORE:-false}"
+      - "ENABLE_COMMAND_BLOCK=${MINECRAFT_ENABLE_COMMAND_BLOCK:-false}"
+      - "SPAWN_ANIMALS=${MINECRAFT_SPAWN_ANIMALS:-true}"
+      - "SPAWN_MONSTERS=${MINECRAFT_SPAWN_MONSTERS:-true}"
+      - "SPAWN_NPCS=${MINECRAFT_SPAWN_NPCS:-true}"
+      - "SNOOPER_ENABLED=${MINECRAFT_SNOOPER_ENABLED:-true}"
+      - "ONLINE_MODE=${MINECRAFT_ONLINE_MODE:-true}"
+      - "PLAYER_IDLE_TIMEOUT=${MINECRAFT_PLAYER_IDLE_TIMEOUT:-0}"
+      - "MEMORY=${MINECRAFT_MEMORY:-1G}"
+      - "ENABLE_AUTOPAUSE=${MINECRAFT_ENABLE_AUTOPAUSE:-false}"
+      - "RCON_PASSWORD=${SERVICE_PASSWORD_RCON}"
+      - "PORT=${PORT:-25565}"
     volumes:
-      - './minecraft-data:/data'
+      - "./minecraft-data:/data"
     healthcheck:
       test:
         - CMD
         - /usr/local/bin/mc-monitor
         - status
-        - '--host'
+        - "--host"
         - localhost
       interval: 2s
       timeout: 10s
@@ -102,10 +102,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 14G
         reservations:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 6G
 
   bluemap-web:
@@ -115,7 +115,7 @@ services:
     ports:
       - "8100:8080"
     volumes:
-      - './minecraft-data/bluemap/web:/usr/share/nginx/html:ro'
+      - "./minecraft-data/bluemap/web:/usr/share/nginx/html:ro"
     environment:
       - NGINX_ENTRYPOINT_QUIET_LOGS=1
     command: >
@@ -127,11 +127,11 @@ services:
         sendfile on;
         tcp_nopush on;
         tcp_nodelay on;
-      
+
         add_header Access-Control-Allow-Origin \"*\" always;
         add_header Access-Control-Allow-Methods \"GET, HEAD, OPTIONS\" always;
         add_header Access-Control-Allow-Headers \"*\" always;
-      
+
         location / {
             try_files $$uri $$uri/ /index.html;
         }
@@ -149,11 +149,11 @@ services:
                 proxy_set_header Upgrade $$http_upgrade;
                 proxy_set_header Connection \"upgrade\";
                 proxy_set_header Host $$host;
-      
+
                 error_page 502 504 = @server-offline;
             }
         }
-      
+
         location @empty {
             return 204;
         }
@@ -171,10 +171,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
+          cpus: "0.50"
           memory: 256M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 128M
 
 volumes:

@@ -30,19 +30,21 @@ export class WebSocketCommandHandler {
       this.cleanupStaleCommands();
     }, timeoutMs / 2);
 
-    this.logger.debug(`WebSocketCommandHandler initialized with timeout ${timeoutMs}ms`);
+    this.logger.debug(
+      `WebSocketCommandHandler initialized with timeout ${timeoutMs}ms`,
+    );
   }
 
   destroy() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
-      this.logger.debug('WebSocketCommandHandler cleanup interval destroyed');
+      this.logger.debug("WebSocketCommandHandler cleanup interval destroyed");
     }
   }
 
   setSocket(socket: WebSocket) {
     this.socket = socket;
-    this.logger.debug('WebSocket connection set');
+    this.logger.debug("WebSocket connection set");
   }
 
   private getHealthySocket(): WebSocket | null {
@@ -61,12 +63,18 @@ export class WebSocketCommandHandler {
         if (command.retries < this.maxRetries) {
           command.retries++;
           command.sentTime = now;
-          this.logger.debug(`Retrying stale command ${messageId} (attempt ${command.retries}/${this.maxRetries})`);
+          this.logger.debug(
+            `Retrying stale command ${messageId} (attempt ${command.retries}/${this.maxRetries})`,
+          );
           await this.processCommand(command);
         } else {
-          this.logger.warn(`Command ${messageId} failed after ${this.maxRetries} retries - cleaning up`);
+          this.logger.warn(
+            `Command ${messageId} failed after ${this.maxRetries} retries - cleaning up`,
+          );
           this.cleanupCommand(messageId);
-          command.reject(new Error(`Command timed out after ${this.maxRetries} retries`));
+          command.reject(
+            new Error(`Command timed out after ${this.maxRetries} retries`),
+          );
         }
       }
     }
@@ -76,24 +84,28 @@ export class WebSocketCommandHandler {
     const socket = this.getHealthySocket();
     if (!socket) {
       this.logger.error(`No healthy socket for command ${command.messageId}`);
-      command.reject(new Error('No healthy socket available'));
+      command.reject(new Error("No healthy socket available"));
       return;
     }
 
     try {
-      this.logger.debug(`Processing command ${command.messageId} (type: ${command.type})`);
+      this.logger.debug(
+        `Processing command ${command.messageId} (type: ${command.type})`,
+      );
       this.activeCommands.set(command.messageId, command);
 
       const message = {
         id: command.messageId,
-        ...command.data
+        ...command.data,
       };
 
       // Send command without waiting for others to complete
       socket.send(JSON.stringify(message));
       this.logger.debug(`Successfully sent command ${command.messageId}`);
     } catch (error) {
-      this.logger.error(`Failed to process command ${command.messageId}: ${error}`);
+      this.logger.error(
+        `Failed to process command ${command.messageId}: ${error}`,
+      );
       this.cleanupCommand(command.messageId);
       command.reject(error);
     }
@@ -101,15 +113,15 @@ export class WebSocketCommandHandler {
 
   async sendCommand(socket: WebSocket, data: unknown): Promise<unknown> {
     const messageId = crypto.randomUUID();
-    const commandType = (data as any)?.type || 'unknown';
+    const commandType = (data as any)?.type || "unknown";
 
     if (socket.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not open');
+      throw new Error("WebSocket is not open");
     }
 
     const message = {
       id: messageId,
-      ...data
+      ...data,
     };
 
     // IMMEDIATELY send the message - don't wait for anything
@@ -126,7 +138,7 @@ export class WebSocketCommandHandler {
         reject,
         timer: 0,
         sentTime: Date.now(),
-        retries: 0
+        retries: 0,
       };
 
       this.activeCommands.set(messageId, command);
@@ -171,22 +183,28 @@ export class WebSocketCommandHandler {
 
     return {
       activeCommands: this.activeCommands.size,
-      oldestCommand
+      oldestCommand,
     };
   }
 
   dumpState(): string {
     const now = Date.now();
-    const commands = Array.from(this.activeCommands.entries()).map(([id, cmd]) => ({
+    const commands = Array.from(this.activeCommands.entries()).map((
+      [id, cmd],
+    ) => ({
       id,
       type: cmd.type,
       age: now - cmd.sentTime,
-      retries: cmd.retries
+      retries: cmd.retries,
     }));
 
-    return JSON.stringify({
-      activeCommands: commands,
-      isProcessing: this.activeCommands.size > 0
-    }, null, 2);
+    return JSON.stringify(
+      {
+        activeCommands: commands,
+        isProcessing: this.activeCommands.size > 0,
+      },
+      null,
+      2,
+    );
   }
 }

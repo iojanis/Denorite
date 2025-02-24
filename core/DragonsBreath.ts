@@ -1,12 +1,12 @@
 // ANSI escape codes with bright and dim variants for better color matching
 const COLORS = {
   RESET: "\x1b[0m",
-  CORK_BROWN: "\x1b[38;5;130m",    // Dark orange/brown for cork
-  GLASS_BLUE: "\x1b[38;5;153m",    // Light blue for glass
-  POTION_PINK: "\x1b[38;5;218m",   // Light pink for main potion
+  CORK_BROWN: "\x1b[38;5;130m", // Dark orange/brown for cork
+  GLASS_BLUE: "\x1b[38;5;153m", // Light blue for glass
+  POTION_PINK: "\x1b[38;5;218m", // Light pink for main potion
   POTION_BRIGHT: "\x1b[38;5;213m", // Brighter pink for highlights
-  POTION_DIM: "\x1b[38;5;182m",    // Dimmer pink for shadows
-  HIGHLIGHT: "\x1b[38;5;255m",     // Bright white for sparkles
+  POTION_DIM: "\x1b[38;5;182m", // Dimmer pink for shadows
+  HIGHLIGHT: "\x1b[38;5;255m", // Bright white for sparkles
 };
 
 const potionArt = [
@@ -37,7 +37,7 @@ const potionArt = [
   "                   ...,ddddxxxxxxxxxxdddd....               ",
   "                      'oooooooooooooooooo.                  ",
   "                                                            ",
-  "                                                            "
+  "                                                            ",
 ];
 
 export function printColoredPotion() {
@@ -48,36 +48,36 @@ export function printColoredPotion() {
       const char = line[i];
 
       // Determine if we're in the cork area (top 3 lines where 'o' appears)
-      const isInCorkArea = lineIndex < 4 && char === 'o';
+      const isInCorkArea = lineIndex < 4 && char === "o";
 
-      switch(char) {
+      switch (char) {
         // Cork - only at the top
-        case 'o':
-          coloredLine += isInCorkArea ?
-            COLORS.CORK_BROWN + char :
-            COLORS.GLASS_BLUE + char;
+        case "o":
+          coloredLine += isInCorkArea
+            ? COLORS.CORK_BROWN + char
+            : COLORS.GLASS_BLUE + char;
           break;
         // Glass outline and details
-        case 'c':
-        case ':':
-        case ';':
+        case "c":
+        case ":":
+        case ";":
           coloredLine += COLORS.GLASS_BLUE + char;
           break;
         // Potion liquid - brighter parts
-        case 'X':
-        case 'K':
-        case 'N':
-        case 'W':
+        case "X":
+        case "K":
+        case "N":
+        case "W":
           coloredLine += COLORS.POTION_BRIGHT + char;
           break;
         // Shadows and depth
-        case 'd':
-        case 'O':
+        case "d":
+        case "O":
           coloredLine += COLORS.POTION_DIM + char;
           break;
         // Highlights and sparkles
-        case '.':
-        case '\'':
+        case ".":
+        case "'":
           coloredLine += COLORS.HIGHLIGHT + char;
           break;
         default:
@@ -92,7 +92,7 @@ const COLORS2 = {
   BLUE: "\x1b[38;5;61m",
   PINK: "\x1b[38;5;78m",
   WHITE: "\x1b[38;5;255m",
-  GRAY: "\x1b[38;5;245m"
+  GRAY: "\x1b[38;5;245m",
 };
 
 const header = [
@@ -101,7 +101,7 @@ const header = [
   " ██║  ██║█████╗  ██╔██╗ ██║██║   ██║██████╔╝██║   ██║   █████╗  ",
   " ██║  ██║██╔══╝  ██║╚██╗██║██║   ██║██╔══██╗██║   ██║   ██╔══╝  ",
   " ██████╔╝███████╗██║ ╚████║╚██████╔╝██║  ██║██║   ██║   ███████╗",
-  " ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   ╚══════╝"
+  " ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   ╚══════╝",
 ];
 
 export function printHeader() {
@@ -115,7 +115,7 @@ export function printHeader() {
     "\x1b[38;5;247m",
     "\x1b[38;5;251m",
     "\x1b[38;5;253m",
-    "\x1b[38;5;255m"  // White
+    "\x1b[38;5;255m", // White
   ];
 
   // Print each line of the DENORITE header with gradient effect
